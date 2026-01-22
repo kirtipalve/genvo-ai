@@ -12,7 +12,7 @@ export function Footer() {
           </Link>
 
           <div className="flex gap-8 text-black/60 dark:text-white/60 text-sm transition-colors duration-500">
-            <Link to="/features" className="hover:text-black dark:hover:text-white transition-colors">Features</Link>
+            <a href="#features" className="hover:text-black dark:hover:text-white transition-colors">Features</a>
             <a href="#" className="hover:text-black dark:hover:text-white transition-colors">Pricing</a>
             <a href="#" className="hover:text-black dark:hover:text-white transition-colors">Contact</a>
           </div>

@@ -8,7 +8,6 @@ import { Explore } from "@/app/pages/Explore";
 import { Branches } from "@/app/pages/Branches";
 import { Compare } from "@/app/pages/Compare";
 import { Merge } from "@/app/pages/Merge";
-import { FeaturesPage } from "@/app/pages/FeaturesPage";
 import { AppLayout } from "@/app/layouts/AppLayout";
 
 export default function App() {
@@ -17,7 +16,6 @@ export default function App() {
       <Routes>
         {/* Landing page - no sidebar */}
         <Route path="/" element={<Landing />} />
-        <Route path="/features" element={<FeaturesPage />} />
 
         {/* App pages - with sidebar */}
         <Route element={<AppLayout />}>
