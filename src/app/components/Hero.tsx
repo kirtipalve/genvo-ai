@@ -54,16 +54,16 @@ export function Hero() {
             transition={{ duration: 0.8, delay: 0.3 }}
             className="text-6xl md:text-8xl font-bold text-black dark:text-white mb-8 tracking-tight transition-colors duration-500"
           >
-            Create Together
+            GitHub for AI Video
           </motion.h1>
-          
+
           <motion.p
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.5 }}
             className="text-xl md:text-2xl text-black/60 dark:text-white/60 mb-12 max-w-2xl mx-auto transition-colors duration-500"
           >
-            AI video generation, versioned
+            Generate, version, branch, and merge your AI videos
           </motion.p>
           
           <motion.div
