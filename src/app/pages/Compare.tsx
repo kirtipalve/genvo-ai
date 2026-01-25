@@ -1,4 +1,5 @@
 import { motion } from "motion/react";
+import { useState, useEffect } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import {
   GitBranch,
@@ -8,27 +9,52 @@ import {
   Plus,
   Minus,
   Equal,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { VideoPlayer } from "@/app/components/VideoPlayer";
-import { mockProjects, mockBranches } from "@/app/data/mockData";
+import { getProject, getBranch } from "@/app/data/dataService";
+import type { Project, Branch } from "@/app/data/mockData";
 import { cn } from "@/lib/utils";
 
 export function Compare() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const project = mockProjects.find((p) => p.id === id) || mockProjects[0];
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [branchA, setBranchA] = useState<Branch | null>(null);
+  const [branchB, setBranchB] = useState<Branch | null>(null);
 
   const branchAId = searchParams.get("a");
   const branchBId = searchParams.get("b");
 
-  const branchA = mockBranches.find((b) => b.id === branchAId);
-  const branchB = mockBranches.find((b) => b.id === branchBId);
+  useEffect(() => {
+    if (id) {
+      setProject(getProject(id) || null);
+    }
+    if (branchAId) {
+      setBranchA(getBranch(branchAId) || null);
+    }
+    if (branchBId) {
+      setBranchB(getBranch(branchBId) || null);
+    }
+  }, [id, branchAId, branchBId]);
 
-  if (!branchA || !branchB) {
+  if (!branchA || !branchB || !project) {
     return (
       <div className="min-h-screen p-8 flex items-center justify-center">
-        <p className="text-black/60 dark:text-white/60">Invalid branch selection</p>
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-black/30 dark:text-white/30 mb-4" />
+          <h2 className="text-xl font-semibold text-black dark:text-white mb-2">
+            Invalid branch selection
+          </h2>
+          <p className="text-black/60 dark:text-white/60 mb-4">
+            Please select two branches to compare.
+          </p>
+          <Link to={id ? `/project/${id}/branches` : "/dashboard"}>
+            <Button>Go Back</Button>
+          </Link>
+        </div>
       </div>
     );
   }

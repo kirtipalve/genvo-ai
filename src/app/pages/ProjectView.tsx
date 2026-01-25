@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   GitBranch,
@@ -16,20 +16,66 @@ import {
   Sparkles,
   History,
   Settings,
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { VideoPlayer } from "@/app/components/VideoPlayer";
-import { mockProjects } from "@/app/data/mockData";
+import { getProject, updateProject, deleteProject } from "@/app/data/dataService";
 import { cn, formatRelativeTime, formatDate } from "@/lib/utils";
-import type { Version } from "@/app/data/mockData";
+import type { Project, Version } from "@/app/data/mockData";
 
 export function ProjectView() {
   const { id } = useParams();
-  const project = mockProjects.find((p) => p.id === id) || mockProjects[0];
-  const [selectedVersion, setSelectedVersion] = useState<Version | null>(
-    project.versions[project.versions.length - 1] || null
-  );
+  const [project, setProject] = useState<Project | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
+
+  useEffect(() => {
+    if (id) {
+      const loadedProject = getProject(id);
+      if (loadedProject) {
+        setProject(loadedProject);
+        setSelectedVersion(
+          loadedProject.versions[loadedProject.versions.length - 1] || null
+        );
+      }
+    }
+  }, [id]);
+
+  const handleToggleVisibility = () => {
+    if (!project || !id) return;
+    const updated = updateProject(id, { isPublic: !project.isPublic });
+    if (updated) setProject(updated);
+  };
+
+  const handleDelete = () => {
+    if (!id) return;
+    if (window.confirm("Are you sure you want to delete this project?")) {
+      deleteProject(id);
+      window.location.href = "/dashboard";
+    }
+  };
+
+  // Loading/error state
+  if (!project) {
+    return (
+      <div className="min-h-screen p-8 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-black/30 dark:text-white/30 mb-4" />
+          <h2 className="text-xl font-semibold text-black dark:text-white mb-2">
+            Project not found
+          </h2>
+          <p className="text-black/60 dark:text-white/60 mb-4">
+            The project you're looking for doesn't exist.
+          </p>
+          <Link to="/dashboard">
+            <Button>Go to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-8">
@@ -104,8 +150,23 @@ export function ProjectView() {
           <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
             <Download className="w-4 h-4" />
           </Button>
-          <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
-            <MoreHorizontal className="w-4 h-4" />
+          <Button
+            variant="outline"
+            size="icon"
+            className="border-black/10 dark:border-white/10"
+            onClick={handleToggleVisibility}
+            title={project.isPublic ? "Make private" : "Make public"}
+          >
+            {project.isPublic ? <Lock className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="border-red-500/20 text-red-500 hover:bg-red-500/10"
+            onClick={handleDelete}
+            title="Delete project"
+          >
+            <Trash2 className="w-4 h-4" />
           </Button>
           <Link to={`/project/${id}/generate`}>
             <Button className="bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black gap-2">

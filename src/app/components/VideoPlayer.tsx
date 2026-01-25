@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Play,
   Pause,
@@ -26,28 +26,130 @@ export function VideoPlayer({
   title,
   className,
 }: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(false);
+  const [hasRealVideo, setHasRealVideo] = useState(false);
 
-  // Mock playback simulation
+  // Check if we have a real playable video
+  useEffect(() => {
+    setHasRealVideo(!!videoUrl && !videoUrl.includes("placeholder"));
+  }, [videoUrl]);
+
+  // Handle video time updates
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTimeUpdate = () => {
+      if (video.duration) {
+        setProgress((video.currentTime / video.duration) * 100);
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      setDuration(video.duration);
+    };
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setProgress(0);
+    };
+
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    video.addEventListener("loadedmetadata", handleLoadedMetadata);
+    video.addEventListener("ended", handleEnded);
+
+    return () => {
+      video.removeEventListener("timeupdate", handleTimeUpdate);
+      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      video.removeEventListener("ended", handleEnded);
+    };
+  }, [hasRealVideo]);
+
   const togglePlay = () => {
-    setIsPlaying(!isPlaying);
-    if (!isPlaying) {
-      // Simulate progress
-      const interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setIsPlaying(false);
-            return 0;
-          }
-          return prev + 2;
-        });
-      }, 100);
+    const video = videoRef.current;
+
+    if (hasRealVideo && video) {
+      if (isPlaying) {
+        video.pause();
+        setIsPlaying(false);
+      } else {
+        video.play();
+        setIsPlaying(true);
+      }
+    } else {
+      // Simulate playback for demo mode
+      setIsPlaying(!isPlaying);
+      if (!isPlaying) {
+        const interval = setInterval(() => {
+          setProgress((prev) => {
+            if (prev >= 100) {
+              clearInterval(interval);
+              setIsPlaying(false);
+              return 0;
+            }
+            return prev + 2;
+          });
+        }, 100);
+      }
     }
   };
+
+  const handleSeek = (value: number[]) => {
+    const video = videoRef.current;
+    if (hasRealVideo && video && video.duration) {
+      video.currentTime = (value[0] / 100) * video.duration;
+    }
+    setProgress(value[0]);
+  };
+
+  const handleReset = () => {
+    const video = videoRef.current;
+    if (hasRealVideo && video) {
+      video.currentTime = 0;
+      video.pause();
+    }
+    setProgress(0);
+    setIsPlaying(false);
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (hasRealVideo && video) {
+      video.muted = !isMuted;
+    }
+    setIsMuted(!isMuted);
+  };
+
+  const handleDownload = () => {
+    if (videoUrl) {
+      const link = document.createElement("a");
+      link.href = videoUrl;
+      link.download = `${title || "video"}.mp4`;
+      link.click();
+    }
+  };
+
+  const handleFullscreen = () => {
+    const video = videoRef.current;
+    if (video && video.requestFullscreen) {
+      video.requestFullscreen();
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const currentTime = hasRealVideo && videoRef.current
+    ? videoRef.current.currentTime
+    : (progress / 100) * 5;
 
   return (
     <motion.div
@@ -62,11 +164,22 @@ export function VideoPlayer({
     >
       {/* Video/Thumbnail */}
       <div className="relative aspect-video">
-        <img
-          src={thumbnail}
-          alt={title || "Video preview"}
-          className="w-full h-full object-cover"
-        />
+        {hasRealVideo ? (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            poster={thumbnail}
+            className="w-full h-full object-cover"
+            muted={isMuted}
+            playsInline
+          />
+        ) : (
+          <img
+            src={thumbnail}
+            alt={title || "Video preview"}
+            className="w-full h-full object-cover"
+          />
+        )}
 
         {/* Play overlay */}
         {!isPlaying && (
@@ -104,7 +217,7 @@ export function VideoPlayer({
             value={[progress]}
             max={100}
             step={1}
-            onValueChange={(value) => setProgress(value[0])}
+            onValueChange={handleSeek}
             className="cursor-pointer"
           />
         </div>
@@ -128,10 +241,7 @@ export function VideoPlayer({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => {
-                setProgress(0);
-                setIsPlaying(false);
-              }}
+              onClick={handleReset}
               className="text-white hover:bg-white/20"
             >
               <RotateCcw className="w-4 h-4" />
@@ -140,7 +250,7 @@ export function VideoPlayer({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setIsMuted(!isMuted)}
+              onClick={toggleMute}
               className="text-white hover:bg-white/20"
             >
               {isMuted ? (
@@ -151,25 +261,31 @@ export function VideoPlayer({
             </Button>
 
             <span className="text-white/70 text-sm ml-2">
-              0:{String(Math.floor(progress / 20)).padStart(2, "0")} / 0:05
+              {formatTime(currentTime)} / {formatTime(duration || 5)}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-            >
-              <Download className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-            >
-              <Maximize className="w-4 h-4" />
-            </Button>
+            {videoUrl && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDownload}
+                className="text-white hover:bg-white/20"
+              >
+                <Download className="w-4 h-4" />
+              </Button>
+            )}
+            {hasRealVideo && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleFullscreen}
+                className="text-white hover:bg-white/20"
+              >
+                <Maximize className="w-4 h-4" />
+              </Button>
+            )}
           </div>
         </div>
       </motion.div>

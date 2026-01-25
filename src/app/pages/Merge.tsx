@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
 import {
   GitBranch,
@@ -10,13 +10,19 @@ import {
   CheckCircle,
   Wand2,
   ArrowRight,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
 import { Label } from "@/app/components/ui/label";
 import { VideoPlayer } from "@/app/components/VideoPlayer";
-import { mockProjects, mockBranches } from "@/app/data/mockData";
-import { cn } from "@/lib/utils";
+import {
+  getProject,
+  getBranch,
+  getBranchesByProject,
+  mergeBranches,
+} from "@/app/data/dataService";
+import type { Project, Branch } from "@/app/data/mockData";
 
 type MergeStatus = "editing" | "generating" | "completed";
 
@@ -24,44 +30,85 @@ export function Merge() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const project = mockProjects.find((p) => p.id === id) || mockProjects[0];
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [branchA, setBranchA] = useState<Branch | null>(null);
+  const [branchB, setBranchB] = useState<Branch | null>(null);
+  const [mergedPrompt, setMergedPrompt] = useState("");
+  const [status, setStatus] = useState<MergeStatus>("editing");
+  const [progress, setProgress] = useState(0);
 
   const branchAId = searchParams.get("a") || searchParams.get("branch");
   const branchBId = searchParams.get("b");
 
-  // If only one branch provided, merge with main
-  const branchA = mockBranches.find((b) => b.id === branchAId);
-  const branchB = branchBId
-    ? mockBranches.find((b) => b.id === branchBId)
-    : mockBranches.find((b) => b.name === "main" && b.projectId === id);
+  // Load data
+  useEffect(() => {
+    if (id) {
+      const loadedProject = getProject(id);
+      setProject(loadedProject || null);
 
-  const [mergedPrompt, setMergedPrompt] = useState(() => {
-    if (!branchA || !branchB) return "";
-    // Simple merge: combine unique parts
-    const wordsA = new Set(branchA.prompt.split(" "));
-    const wordsB = branchB.prompt.split(" ");
-    const combined = [...branchA.prompt.split(" ")];
-    wordsB.forEach((word) => {
-      if (!wordsA.has(word)) {
-        combined.push(word);
+      // Load branch A
+      if (branchAId) {
+        setBranchA(getBranch(branchAId) || null);
       }
-    });
-    return combined.join(" ");
-  });
 
-  const [status, setStatus] = useState<MergeStatus>("editing");
-  const [progress, setProgress] = useState(0);
+      // Load branch B (or default to main)
+      if (branchBId) {
+        setBranchB(getBranch(branchBId) || null);
+      } else {
+        // Find main branch
+        const branches = getBranchesByProject(id);
+        const mainBranch = branches.find((b) => b.name === "main");
+        setBranchB(mainBranch || null);
+      }
+    }
+  }, [id, branchAId, branchBId]);
 
-  if (!branchA || !branchB) {
+  // Initialize merged prompt when branches load
+  useEffect(() => {
+    if (branchA && branchB) {
+      const wordsA = new Set(branchA.prompt.split(" "));
+      const wordsB = branchB.prompt.split(" ");
+      const combined = [...branchA.prompt.split(" ")];
+      wordsB.forEach((word) => {
+        if (!wordsA.has(word)) {
+          combined.push(word);
+        }
+      });
+      setMergedPrompt(combined.join(" "));
+    }
+  }, [branchA, branchB]);
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+
+  if (!branchA || !branchB || !project) {
     return (
       <div className="min-h-screen p-8 flex items-center justify-center">
-        <p className="text-black/60 dark:text-white/60">Invalid branch selection</p>
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-black/30 dark:text-white/30 mb-4" />
+          <h2 className="text-xl font-semibold text-black dark:text-white mb-2">
+            Invalid branch selection
+          </h2>
+          <p className="text-black/60 dark:text-white/60 mb-4">
+            Please select valid branches to merge.
+          </p>
+          <Link to={id ? `/project/${id}/branches` : "/dashboard"}>
+            <Button>Go Back</Button>
+          </Link>
+        </div>
       </div>
     );
   }
 
   const handleAutoMerge = () => {
-    // Intelligent merge suggestion
     const suggestedMerge = `${branchA.prompt}, ${branchB.prompt
       .split(" ")
       .filter((word) => !branchA.prompt.includes(word))
@@ -73,16 +120,32 @@ export function Merge() {
     setStatus("generating");
     setProgress(0);
 
-    const interval = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
-          clearInterval(interval);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
           setStatus("completed");
           return 100;
         }
         return prev + Math.random() * 15;
       });
     }, 500);
+  };
+
+  const handleSaveToMain = () => {
+    if (!id || !project) return;
+
+    // Merge creates a new version on the project
+    mergeBranches(id, branchA.id, branchB.id, mergedPrompt, {
+      ...branchA.settings,
+      // Use the longer duration between the two
+      duration: Math.max(branchA.settings.duration, branchB.settings.duration),
+    });
+
+    navigate(`/project/${id}`);
   };
 
   return (
@@ -316,7 +379,7 @@ export function Merge() {
                       Try Again
                     </Button>
                     <Button
-                      onClick={() => navigate(`/project/${id}`)}
+                      onClick={handleSaveToMain}
                       className="flex-1 bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black"
                     >
                       Save to Main

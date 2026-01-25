@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   Sparkles,
@@ -9,10 +9,13 @@ import {
   CheckCircle,
   ArrowLeft,
   RefreshCw,
+  AlertCircle,
+  Key,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Label } from "@/app/components/ui/label";
 import { Textarea } from "@/app/components/ui/textarea";
+import { Input } from "@/app/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -22,45 +25,165 @@ import {
 } from "@/app/components/ui/select";
 import { Slider } from "@/app/components/ui/slider";
 import { VideoPlayer } from "@/app/components/VideoPlayer";
-import { mockProjects, styleOptions, modelOptions, aspectRatioOptions } from "@/app/data/mockData";
+import { styleOptions, aspectRatioOptions } from "@/app/data/mockData";
+import { getProject, addVersion, updateProject } from "@/app/data/dataService";
+import type { Project } from "@/app/data/mockData";
 import { cn } from "@/lib/utils";
+import {
+  generateVideo,
+  simulateGeneration,
+  isApiKeyConfigured,
+  saveApiKey,
+  getApiKey,
+  VIDEO_MODELS,
+  type VideoModelKey,
+} from "@/app/services/videoGeneration";
 
-type GenerationStatus = "idle" | "generating" | "completed";
+type GenerationStatus = "idle" | "generating" | "completed" | "error";
 
 export function Generate() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const project = mockProjects.find((p) => p.id === id) || mockProjects[0];
 
-  const [prompt, setPrompt] = useState(project.prompt);
-  const [style, setStyle] = useState(project.settings.style);
-  const [model, setModel] = useState("gen3");
-  const [aspectRatio, setAspectRatio] = useState(project.settings.aspectRatio);
-  const [duration, setDuration] = useState([project.settings.duration]);
+  const [project, setProject] = useState<Project | null>(null);
+  const [prompt, setPrompt] = useState("");
+  const [style, setStyle] = useState("Cinematic");
+  const [model, setModel] = useState<VideoModelKey>("veo3");
+  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [duration, setDuration] = useState([5]);
   const [status, setStatus] = useState<GenerationStatus>("idle");
   const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
 
-  const handleGenerate = () => {
+  // Load project data and check API key
+  useEffect(() => {
+    if (id) {
+      const loadedProject = getProject(id);
+      if (loadedProject) {
+        setProject(loadedProject);
+        setPrompt(loadedProject.prompt);
+        setStyle(loadedProject.settings.style);
+        setAspectRatio(loadedProject.settings.aspectRatio);
+        setDuration([loadedProject.settings.duration]);
+      }
+    }
+    // Check if API key is configured
+    setHasApiKey(isApiKeyConfigured());
+    const existingKey = getApiKey();
+    if (existingKey) {
+      setApiKey(existingKey);
+    }
+  }, [id]);
+
+  const handleSaveApiKey = () => {
+    if (apiKey.trim()) {
+      saveApiKey(apiKey.trim());
+      setHasApiKey(true);
+      setShowApiKeyInput(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!project || !id) return;
+
     setStatus("generating");
     setProgress(0);
+    setStatusMessage("Starting generation...");
+    setErrorMessage("");
+    setGeneratedVideoUrl(null);
 
-    // Simulate generation progress
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setStatus("completed");
-          return 100;
-        }
-        return prev + Math.random() * 15;
-      });
-    }, 500);
+    // Update project status to generating
+    updateProject(id, { status: "generating" });
+
+    const modelConfig = VIDEO_MODELS[model];
+
+    try {
+      if (hasApiKey) {
+        // Use real fal.ai API
+        const result = await generateVideo({
+          prompt: `${prompt}, ${style} style`,
+          model,
+          onProgress: (statusText) => {
+            setStatusMessage(statusText);
+            // Estimate progress based on status
+            if (statusText.includes("queue")) setProgress(10);
+            else if (statusText.includes("Generating")) setProgress(50);
+          },
+        });
+
+        setProgress(100);
+        setGeneratedVideoUrl(result.videoUrl);
+
+        // Create the new version with real video URL
+        addVersion(id, prompt, {
+          duration: duration[0],
+          aspectRatio,
+          style,
+          model: modelConfig.name,
+        }, result.videoUrl);
+
+      } else {
+        // Demo mode - simulate generation
+        await simulateGeneration((prog, statusText) => {
+          setProgress(prog);
+          setStatusMessage(statusText);
+        });
+
+        // Create version with placeholder
+        addVersion(id, prompt, {
+          duration: duration[0],
+          aspectRatio,
+          style,
+          model: modelConfig.name,
+        });
+      }
+
+      // Reload project to get updated data
+      const updatedProject = getProject(id);
+      if (updatedProject) {
+        setProject(updatedProject);
+      }
+
+      setStatus("completed");
+    } catch (error) {
+      setStatus("error");
+      setErrorMessage(error instanceof Error ? error.message : "Generation failed");
+      updateProject(id, { status: "draft" });
+    }
   };
 
   const handleReset = () => {
     setStatus("idle");
     setProgress(0);
+    setStatusMessage("");
+    setErrorMessage("");
+    setGeneratedVideoUrl(null);
   };
+
+  // Loading state
+  if (!project) {
+    return (
+      <div className="min-h-screen p-8 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-black/30 dark:text-white/30 mb-4" />
+          <h2 className="text-xl font-semibold text-black dark:text-white mb-2">
+            Project not found
+          </h2>
+          <p className="text-black/60 dark:text-white/60 mb-4">
+            The project you're looking for doesn't exist.
+          </p>
+          <Link to="/dashboard">
+            <Button>Go to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-8">
@@ -163,18 +286,24 @@ export function Generate() {
 
             <div className="space-y-2">
               <Label>AI Model</Label>
-              <Select value={model} onValueChange={setModel} disabled={status === "generating"}>
+              <Select value={model} onValueChange={(v) => setModel(v as VideoModelKey)} disabled={status === "generating"}>
                 <SelectTrigger className="bg-white dark:bg-white/5 border-black/10 dark:border-white/10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {modelOptions.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
+                  {Object.entries(VIDEO_MODELS).map(([key, m]) => (
+                    <SelectItem key={key} value={key}>
+                      <div className="flex items-center justify-between gap-4">
+                        <span>{m.name}</span>
+                        <span className="text-xs text-black/50 dark:text-white/50">{m.costPerVideo}</span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-black/50 dark:text-white/50">
+                {VIDEO_MODELS[model].description}
+              </p>
             </div>
           </div>
 
@@ -222,6 +351,64 @@ export function Generate() {
             />
           </div>
 
+          {/* API Key Configuration */}
+          {!hasApiKey && (
+            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+              <div className="flex items-start gap-3">
+                <Key className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                    Demo Mode
+                  </p>
+                  <p className="text-xs text-yellow-600/70 dark:text-yellow-400/70 mt-1">
+                    Add your fal.ai API key to generate real videos, or continue with demo mode.
+                  </p>
+                  {showApiKeyInput ? (
+                    <div className="mt-3 flex gap-2">
+                      <Input
+                        type="password"
+                        placeholder="Enter your fal.ai API key"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        className="text-sm bg-white dark:bg-white/10"
+                      />
+                      <Button size="sm" onClick={handleSaveApiKey} disabled={!apiKey.trim()}>
+                        Save
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 border-yellow-500/30"
+                      onClick={() => setShowApiKeyInput(true)}
+                    >
+                      Add API Key
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {hasApiKey && (
+            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">
+                fal.ai API configured
+              </span>
+              <button
+                onClick={() => {
+                  setShowApiKeyInput(true);
+                  setHasApiKey(false);
+                }}
+                className="ml-auto text-xs text-green-600/70 hover:text-green-600 dark:text-green-400/70 dark:hover:text-green-400"
+              >
+                Change
+              </button>
+            </div>
+          )}
+
           {/* Generate Button */}
           <div className="pt-4">
             {status === "idle" && (
@@ -231,7 +418,7 @@ export function Generate() {
                 className="w-full bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black py-6 text-lg gap-2"
               >
                 <Sparkles className="w-5 h-5" />
-                Generate Video
+                {hasApiKey ? "Generate Video" : "Generate Demo Video"}
               </Button>
             )}
 
@@ -241,7 +428,7 @@ export function Generate() {
                   <div className="flex items-center gap-3 mb-4">
                     <Loader2 className="w-5 h-5 animate-spin text-black dark:text-white" />
                     <span className="font-medium text-black dark:text-white">
-                      Generating video...
+                      {statusMessage || "Generating video..."}
                     </span>
                   </div>
                   <div className="w-full bg-black/10 dark:bg-white/10 rounded-full h-2 overflow-hidden">
@@ -253,12 +440,33 @@ export function Generate() {
                     />
                   </div>
                   <p className="text-sm text-black/50 dark:text-white/50 mt-3">
-                    {progress < 30 && "Analyzing prompt..."}
-                    {progress >= 30 && progress < 60 && "Generating frames..."}
-                    {progress >= 60 && progress < 90 && "Rendering video..."}
-                    {progress >= 90 && "Finalizing..."}
+                    Using {VIDEO_MODELS[model].name} • {hasApiKey ? "Real generation" : "Demo mode"}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {status === "error" && (
+              <div className="space-y-4">
+                <div className="bg-red-500/10 rounded-xl border border-red-500/20 p-6">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    <span className="font-medium text-red-600 dark:text-red-400">
+                      Generation failed
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-600/70 dark:text-red-400/70 mt-2">
+                    {errorMessage}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleReset}
+                  className="w-full border-black/10 dark:border-white/10 gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Try Again
+                </Button>
               </div>
             )}
 
@@ -306,6 +514,7 @@ export function Generate() {
             <VideoPlayer
               thumbnail={project.thumbnail}
               title={project.title}
+              videoUrl={generatedVideoUrl || undefined}
             />
 
             {/* Version comparison hint */}

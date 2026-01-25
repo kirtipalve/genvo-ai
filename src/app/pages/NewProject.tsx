@@ -15,6 +15,7 @@ import {
 } from "@/app/components/ui/select";
 import { Slider } from "@/app/components/ui/slider";
 import { styleOptions, modelOptions, aspectRatioOptions } from "@/app/data/mockData";
+import { createProject } from "@/app/data/dataService";
 import { cn } from "@/lib/utils";
 
 const promptSuggestions = [
@@ -35,9 +36,17 @@ export function NewProject() {
   const [duration, setDuration] = useState([5]);
 
   const handleCreate = () => {
-    // In a real app, this would create the project and start generation
-    // For demo, navigate to a mock project
-    navigate("/project/1");
+    const modelName = modelOptions.find((m) => m.id === model)?.name || "Gen-3 Alpha";
+
+    const newProject = createProject(title, prompt, {
+      duration: duration[0],
+      aspectRatio: aspectRatio as "16:9" | "9:16" | "1:1",
+      style,
+      model: modelName,
+    });
+
+    // Navigate to the generate page for the new project
+    navigate(`/project/${newProject.id}/generate`);
   };
 
   const handleSuggestion = (suggestion: string) => {

@@ -1,13 +1,21 @@
 import { motion } from "motion/react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Plus, TrendingUp, Video, Clock } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { ProjectCard } from "@/app/components/ProjectCard";
-import { mockProjects } from "@/app/data/mockData";
+import { getProjects } from "@/app/data/dataService";
+import type { Project } from "@/app/data/mockData";
 
 export function Dashboard() {
-  const completedCount = mockProjects.filter((p) => p.status === "completed").length;
-  const totalViews = mockProjects.reduce((acc, p) => acc + p.views, 0);
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    setProjects(getProjects());
+  }, []);
+
+  const completedCount = projects.filter((p) => p.status === "completed").length;
+  const totalViews = projects.reduce((acc, p) => acc + p.views, 0);
 
   return (
     <div className="min-h-screen p-8">
@@ -39,7 +47,7 @@ export function Dashboard() {
             </div>
             <div>
               <p className="text-sm text-black/60 dark:text-white/60">Total Projects</p>
-              <p className="text-2xl font-bold text-black dark:text-white">{mockProjects.length}</p>
+              <p className="text-2xl font-bold text-black dark:text-white">{projects.length}</p>
             </div>
           </div>
         </div>
@@ -88,9 +96,9 @@ export function Dashboard() {
       </motion.div>
 
       {/* Projects Grid */}
-      {mockProjects.length > 0 ? (
+      {projects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {mockProjects.map((project, index) => (
+          {projects.map((project, index) => (
             <ProjectCard key={project.id} project={project} index={index} />
           ))}
         </div>
