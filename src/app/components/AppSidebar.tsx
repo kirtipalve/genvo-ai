@@ -8,11 +8,15 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Search,
+  Command,
+  Play,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { getUnreadNotifications } from "@/app/data/collaborationService";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -20,7 +24,11 @@ const navItems = [
   { icon: Compass, label: "Explore", path: "/explore" },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  onSearchClick?: () => void;
+}
+
+export function AppSidebar({ onSearchClick }: AppSidebarProps) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -50,6 +58,27 @@ export function AppSidebar() {
         </Link>
       </div>
 
+      {/* Search button */}
+      <div className="px-3 py-2">
+        <button
+          onClick={onSearchClick}
+          className={cn(
+            "w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-sm text-black/60 dark:text-white/60",
+            collapsed && "justify-center"
+          )}
+        >
+          <Search className="w-4 h-4 flex-shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Search...</span>
+              <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 rounded border border-black/10 dark:border-white/10 px-1.5 font-mono text-xs">
+                <Command className="w-3 h-3" />K
+              </kbd>
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1">
         {navItems.map((item) => {
@@ -77,12 +106,33 @@ export function AppSidebar() {
       </nav>
 
       {/* Bottom section */}
-      <div className="p-3 border-t border-black/5 dark:border-white/5 space-y-1">
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between px-3")}>
+      <div className="p-3 border-t border-black/5 dark:border-white/5 space-y-2">
+        {/* Demo button */}
+        <Link to="/demo">
+          <motion.div
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 hover:from-purple-500/20 hover:to-pink-500/20 transition-all duration-200",
+              collapsed && "justify-center"
+            )}
+          >
+            <Play className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span className="font-medium">Demo</span>}
+          </motion.div>
+        </Link>
+
+        {/* Theme toggle */}
+        <div className={cn(
+          "flex items-center rounded-lg px-3 py-2",
+          collapsed ? "justify-center" : "justify-between"
+        )}>
           {!collapsed && (
             <span className="text-sm text-black/50 dark:text-white/50">Theme</span>
           )}
-          <ThemeToggle />
+          <div className="flex-shrink-0">
+            <ThemeToggle />
+          </div>
         </div>
 
         <Link to="/settings">
