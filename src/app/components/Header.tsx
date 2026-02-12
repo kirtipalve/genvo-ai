@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { Link } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
-import { Video } from "lucide-react";
+import { Video, Play } from "lucide-react";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 
 export function Header() {
@@ -20,6 +20,12 @@ export function Header() {
 
         <div className="flex items-center gap-4">
           <ThemeToggle />
+          <Link to="/demo">
+            <Button variant="outline" className="gap-2 border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10">
+              <Play className="w-4 h-4" />
+              Watch Demo
+            </Button>
+          </Link>
           <Link to="/dashboard">
             <Button variant="ghost" className="text-black dark:text-white hover:text-black/70 dark:hover:text-white/70 transition-colors duration-500">
               Sign In

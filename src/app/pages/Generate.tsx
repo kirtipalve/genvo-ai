@@ -34,7 +34,6 @@ import {
   simulateGeneration,
   isApiKeyConfigured,
   saveApiKey,
-  getApiKey,
   VIDEO_MODELS,
   type VideoModelKey,
 } from "@/app/services/videoGeneration";
@@ -72,12 +71,7 @@ export function Generate() {
         setDuration([loadedProject.settings.duration]);
       }
     }
-    // Check if API key is configured
     setHasApiKey(isApiKeyConfigured());
-    const existingKey = getApiKey();
-    if (existingKey) {
-      setApiKey(existingKey);
-    }
   }, [id]);
 
   const handleSaveApiKey = () => {
@@ -351,23 +345,35 @@ export function Generate() {
             />
           </div>
 
-          {/* API Key Configuration */}
-          {!hasApiKey && (
-            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+          {/* API Status */}
+          {hasApiKey ? (
+            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">
+                Your fal.ai API key is active
+              </span>
+              <Link to="/settings" className="ml-auto">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-600 dark:text-green-400 hover:bg-green-500/30 transition-colors">
+                  Manage
+                </span>
+              </Link>
+            </div>
+          ) : (
+            <div className="p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl">
               <div className="flex items-start gap-3">
-                <Key className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                <Key className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                    Demo Mode
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400">
+                    Bring Your Own Key
                   </p>
-                  <p className="text-xs text-yellow-600/70 dark:text-yellow-400/70 mt-1">
-                    Add your fal.ai API key to generate real videos, or continue with demo mode.
+                  <p className="text-xs text-purple-600/70 dark:text-purple-400/70 mt-1">
+                    Add your fal.ai API key to generate real videos with AI
                   </p>
                   {showApiKeyInput ? (
                     <div className="mt-3 flex gap-2">
                       <Input
                         type="password"
-                        placeholder="Enter your fal.ai API key"
+                        placeholder="Enter fal.ai API key"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
                         className="text-sm bg-white dark:bg-white/10"
@@ -377,49 +383,66 @@ export function Generate() {
                       </Button>
                     </div>
                   ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 border-yellow-500/30"
-                      onClick={() => setShowApiKeyInput(true)}
-                    >
-                      Add API Key
-                    </Button>
+                    <div className="flex gap-2 mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-purple-500/30 text-purple-600 dark:text-purple-400"
+                        onClick={() => setShowApiKeyInput(true)}
+                      >
+                        <Key className="w-3 h-3 mr-1" />
+                        Add Key
+                      </Button>
+                      <Link to="/settings">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-purple-600/70 dark:text-purple-400/70"
+                        >
+                          Settings
+                        </Button>
+                      </Link>
+                    </div>
                   )}
+                  <div className="mt-3 pt-3 border-t border-purple-500/10">
+                    <p className="text-xs text-purple-600/50 dark:text-purple-400/50">
+                      Or try without an API key:
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {hasApiKey && (
-            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-              <span className="text-sm text-green-600 dark:text-green-400">
-                fal.ai API configured
-              </span>
-              <button
-                onClick={() => {
-                  setShowApiKeyInput(true);
-                  setHasApiKey(false);
-                }}
-                className="ml-auto text-xs text-green-600/70 hover:text-green-600 dark:text-green-400/70 dark:hover:text-green-400"
-              >
-                Change
-              </button>
             </div>
           )}
 
           {/* Generate Button */}
           <div className="pt-4">
             {status === "idle" && (
-              <Button
-                onClick={handleGenerate}
-                disabled={!prompt.trim()}
-                className="w-full bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black py-6 text-lg gap-2"
-              >
-                <Sparkles className="w-5 h-5" />
-                {hasApiKey ? "Generate Video" : "Generate Demo Video"}
-              </Button>
+              <div className="space-y-3">
+                {hasApiKey ? (
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={!prompt.trim()}
+                    className="w-full bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black py-6 text-lg gap-2"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    Generate Video
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      onClick={handleGenerate}
+                      disabled={!prompt.trim()}
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-6 text-lg gap-2"
+                    >
+                      <Sparkles className="w-5 h-5" />
+                      Try Demo Video
+                    </Button>
+                    <p className="text-center text-xs text-black/40 dark:text-white/40">
+                      No API key required - generates a simulated preview
+                    </p>
+                  </>
+                )}
+              </div>
             )}
 
             {status === "generating" && (
@@ -440,7 +463,7 @@ export function Generate() {
                     />
                   </div>
                   <p className="text-sm text-black/50 dark:text-white/50 mt-3">
-                    Using {VIDEO_MODELS[model].name} • {hasApiKey ? "Real generation" : "Demo mode"}
+                    Using {VIDEO_MODELS[model].name} • {hasApiKey ? "fal.ai" : "Demo mode"}
                   </p>
                 </div>
               </div>

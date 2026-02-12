@@ -15,6 +15,7 @@ import {
   Play,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
+import { DemoTip } from "@/app/components/DemoHint";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -225,6 +226,15 @@ export function Branches() {
           </Dialog>
         </div>
       </motion.div>
+
+      {/* Demo tip */}
+      {otherBranches.length > 0 && (
+        <DemoTip>
+          <strong>Branches</strong> let you explore different creative directions without affecting
+          the main version. Select two branches and click <strong>Compare</strong> to see them side-by-side,
+          or <strong>Merge</strong> a branch to make it the new main version.
+        </DemoTip>
+      )}
 
       {/* Selection hint */}
       {selectedBranches.length > 0 && selectedBranches.length < 2 && (

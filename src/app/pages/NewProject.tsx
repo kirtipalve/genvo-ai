@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, Wand2, Image, ArrowRight } from "lucide-react";
+import { Sparkles, Wand2, Image, ArrowRight, Layout } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
@@ -14,8 +14,10 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { Slider } from "@/app/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { styleOptions, modelOptions, aspectRatioOptions } from "@/app/data/mockData";
 import { createProject } from "@/app/data/dataService";
+import { Templates, TEMPLATES, type Template } from "@/app/components/Templates";
 import { cn } from "@/lib/utils";
 
 const promptSuggestions = [
@@ -34,6 +36,16 @@ export function NewProject() {
   const [model, setModel] = useState("gen3");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [duration, setDuration] = useState([5]);
+  const [activeTab, setActiveTab] = useState("scratch");
+
+  const handleSelectTemplate = (template: Template) => {
+    setTitle(template.name);
+    setPrompt(template.prompt);
+    setStyle(template.settings.style);
+    setDuration([template.settings.duration]);
+    setAspectRatio(template.settings.aspectRatio);
+    setActiveTab("scratch");
+  };
 
   const handleCreate = () => {
     const modelName = modelOptions.find((m) => m.id === model)?.name || "Gen-3 Alpha";
@@ -69,15 +81,31 @@ export function NewProject() {
         </p>
       </motion.div>
 
-      {/* Form */}
+      {/* Tabs for scratch vs template */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="space-y-8"
       >
-        {/* Title */}
-        <div className="space-y-2">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
+          <TabsList className="bg-black/5 dark:bg-white/5">
+            <TabsTrigger value="scratch" className="gap-2">
+              <Sparkles className="w-4 h-4" />
+              Start from Scratch
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="gap-2">
+              <Layout className="w-4 h-4" />
+              Use Template
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="templates" className="mt-6">
+            <Templates onSelectTemplate={handleSelectTemplate} />
+          </TabsContent>
+
+          <TabsContent value="scratch" className="mt-6 space-y-8">
+            {/* Title */}
+            <div className="space-y-2">
           <Label htmlFor="title">Project Title</Label>
           <Input
             id="title"
@@ -242,22 +270,24 @@ export function NewProject() {
           </div>
         </div>
 
-        {/* Create Button */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="pt-4"
-        >
-          <Button
-            onClick={handleCreate}
-            disabled={!prompt.trim()}
-            className="w-full bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black py-6 text-lg gap-2"
-          >
-            Create Project
-            <ArrowRight className="w-5 h-5" />
-          </Button>
-        </motion.div>
+            {/* Create Button */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="pt-4"
+            >
+              <Button
+                onClick={handleCreate}
+                disabled={!prompt.trim()}
+                className="w-full bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black py-6 text-lg gap-2"
+              >
+                Create Project
+                <ArrowRight className="w-5 h-5" />
+              </Button>
+            </motion.div>
+          </TabsContent>
+        </Tabs>
       </motion.div>
     </div>
   );

@@ -8,6 +8,8 @@ import { Explore } from "@/app/pages/Explore";
 import { Branches } from "@/app/pages/Branches";
 import { Compare } from "@/app/pages/Compare";
 import { Merge } from "@/app/pages/Merge";
+import { Demo } from "@/app/pages/Demo";
+import { Settings } from "@/app/pages/Settings";
 import { AppLayout } from "@/app/layouts/AppLayout";
 
 export default function App() {
@@ -16,6 +18,9 @@ export default function App() {
       <Routes>
         {/* Landing page - no sidebar */}
         <Route path="/" element={<Landing />} />
+
+        {/* Demo walkthrough - no sidebar */}
+        <Route path="/demo" element={<Demo />} />
 
         {/* App pages - with sidebar */}
         <Route element={<AppLayout />}>
@@ -27,6 +32,7 @@ export default function App() {
           <Route path="/project/:id/compare" element={<Compare />} />
           <Route path="/project/:id/merge" element={<Merge />} />
           <Route path="/explore" element={<Explore />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>
