@@ -11,6 +11,7 @@ import { Merge } from "@/app/pages/Merge";
 import { Demo } from "@/app/pages/Demo";
 import { Settings } from "@/app/pages/Settings";
 import { AppLayout } from "@/app/layouts/AppLayout";
+import { Toaster } from "@/app/components/ui/sonner";
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>
+      <Toaster richColors position="bottom-right" />
     </BrowserRouter>
   );
 }

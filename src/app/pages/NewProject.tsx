@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, Wand2, Image, ArrowRight, Layout } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
@@ -45,19 +46,21 @@ export function NewProject() {
     setDuration([template.settings.duration]);
     setAspectRatio(template.settings.aspectRatio);
     setActiveTab("scratch");
+    toast.success(`Template "${template.name}" applied`);
   };
 
   const handleCreate = () => {
+    if (!prompt.trim()) return;
     const modelName = modelOptions.find((m) => m.id === model)?.name || "Gen-3 Alpha";
 
-    const newProject = createProject(title, prompt, {
+    const newProject = createProject(title || "Untitled Project", prompt, {
       duration: duration[0],
       aspectRatio: aspectRatio as "16:9" | "9:16" | "1:1",
       style,
       model: modelName,
     });
 
-    // Navigate to the generate page for the new project
+    toast.success(`Project "${newProject.title}" created!`);
     navigate(`/project/${newProject.id}/generate`);
   };
 

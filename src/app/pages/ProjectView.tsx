@@ -17,16 +17,34 @@ import {
   Check,
   MessageSquare,
   Plus,
+  Pencil,
+  X,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 import { VideoPlayer } from "@/app/components/VideoPlayer";
 import { VersionTimeline } from "@/app/components/VersionTimeline";
 import { Feedback } from "@/app/components/Feedback";
 import { DemoTip } from "@/app/components/DemoHint";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
-import { getProject, updateProject, deleteProject, getBranchesByProject } from "@/app/data/dataService";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
+import {
+  getProject,
+  updateProject,
+  deleteProject,
+  getBranchesByProject,
+  createProject,
+} from "@/app/data/dataService";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { Project, Version, Branch } from "@/app/data/mockData";
+import { toast } from "sonner";
 
 export function ProjectView() {
   const { id } = useParams();
@@ -37,19 +55,23 @@ export function ProjectView() {
   const [copied, setCopied] = useState(false);
   const [showDemoTip, setShowDemoTip] = useState(true);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState("");
 
   useEffect(() => {
     if (id) {
       const loadedProject = getProject(id);
       if (loadedProject) {
         setProject(loadedProject);
-        setSelectedVersion(
-          loadedProject.versions[loadedProject.versions.length - 1] || null
-        );
+        setSelectedVersion(loadedProject.versions[loadedProject.versions.length - 1] || null);
         setBranches(getBranchesByProject(id));
+        setTitleDraft(loadedProject.title);
+        setDescriptionDraft(loadedProject.description);
       }
     }
-    // Check if tip was already dismissed
     const dismissed = localStorage.getItem("genvo-project-tip-seen");
     if (dismissed) setShowDemoTip(false);
   }, [id]);
@@ -62,24 +84,73 @@ export function ProjectView() {
   const handleToggleVisibility = () => {
     if (!project || !id) return;
     const updated = updateProject(id, { isPublic: !project.isPublic });
-    if (updated) setProject(updated);
+    if (updated) {
+      setProject(updated);
+      toast.success(updated.isPublic ? "Project is now public" : "Project is now private");
+    }
+  };
+
+  const handleSaveTitle = () => {
+    if (!project || !id || !titleDraft.trim()) return;
+    const updated = updateProject(id, { title: titleDraft.trim() });
+    if (updated) {
+      setProject(updated);
+      toast.success("Title updated");
+    }
+    setEditingTitle(false);
+  };
+
+  const handleSaveDescription = () => {
+    if (!project || !id) return;
+    const updated = updateProject(id, { description: descriptionDraft });
+    if (updated) {
+      setProject(updated);
+      toast.success("Description updated");
+    }
+    setEditingDescription(false);
   };
 
   const handleDelete = () => {
     if (!id) return;
-    if (window.confirm("Are you sure you want to delete this project?")) {
-      deleteProject(id);
-      navigate("/dashboard");
-    }
+    deleteProject(id);
+    toast.success("Project deleted");
+    navigate("/dashboard");
   };
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
+    toast.success("Link copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Loading/error state
+  const handleDownload = () => {
+    const videoUrl = selectedVersion?.videoUrl || project?.thumbnail;
+    if (!videoUrl || videoUrl.includes("placeholder")) {
+      toast.error("No video available to download (demo mode)");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = videoUrl;
+    a.download = `${project?.title || "video"}-v${selectedVersion?.versionNumber || 1}.mp4`;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("Download started");
+  };
+
+  const handleFork = () => {
+    if (!project) return;
+    const forked = createProject(
+      `${project.title} (Fork)`,
+      project.prompt,
+      project.settings
+    );
+    toast.success("Project forked! Opening it now...");
+    setTimeout(() => navigate(`/project/${forked.id}`), 800);
+  };
+
   if (!project) {
     return (
       <div className="min-h-screen p-8 flex items-center justify-center">
@@ -96,7 +167,6 @@ export function ProjectView() {
     );
   }
 
-  // Mock collaborators for demo
   const collaborators = [
     { name: "You", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=user" },
     { name: "Sarah", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=sarah" },
@@ -130,8 +200,7 @@ export function ProjectView() {
           }}
         >
           This project has <strong>{branches.length} branches</strong> — different creative
-          directions explored by your team. Click on versions in the timeline to compare,
-          or create a new version with different prompts.
+          directions. Click on versions in the timeline to compare.
         </DemoTip>
       )}
 
@@ -141,32 +210,101 @@ export function ProjectView() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-start justify-between mb-8"
       >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-black dark:text-white">
-              {project.title}
-            </h1>
+        <div className="flex-1 min-w-0 mr-4">
+          {/* Editable Title */}
+          <div className="flex items-center gap-2 mb-2">
+            {editingTitle ? (
+              <div className="flex items-center gap-2 flex-1">
+                <Input
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveTitle();
+                    if (e.key === "Escape") { setEditingTitle(false); setTitleDraft(project.title); }
+                  }}
+                  className="text-2xl font-bold bg-white dark:bg-white/10 border-black/10 dark:border-white/10 h-auto py-1"
+                  autoFocus
+                />
+                <Button size="sm" onClick={handleSaveTitle} className="flex-shrink-0">
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setEditingTitle(false); setTitleDraft(project.title); }}
+                  className="flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold text-black dark:text-white truncate">
+                  {project.title}
+                </h1>
+                <button
+                  onClick={() => setEditingTitle(true)}
+                  className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 text-black/30 dark:text-white/30 hover:text-black/60 dark:hover:text-white/60 transition-colors flex-shrink-0"
+                  title="Edit title"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+
             <button
               onClick={handleToggleVisibility}
               className={cn(
-                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors",
+                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex-shrink-0",
                 project.isPublic
                   ? "bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20"
                   : "bg-black/5 dark:bg-white/5 text-black/60 dark:text-white/60 hover:bg-black/10 dark:hover:bg-white/10"
               )}
             >
               {project.isPublic ? (
-                <>
-                  <Globe className="w-3 h-3" />
-                  Public
-                </>
+                <><Globe className="w-3 h-3" />Public</>
               ) : (
-                <>
-                  <Lock className="w-3 h-3" />
-                  Private
-                </>
+                <><Lock className="w-3 h-3" />Private</>
               )}
             </button>
+          </div>
+
+          {/* Editable Description */}
+          <div className="group relative mb-3">
+            {editingDescription ? (
+              <div className="flex items-start gap-2">
+                <Input
+                  value={descriptionDraft}
+                  onChange={(e) => setDescriptionDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveDescription();
+                    if (e.key === "Escape") { setEditingDescription(false); setDescriptionDraft(project.description); }
+                  }}
+                  className="bg-white dark:bg-white/10 border-black/10 dark:border-white/10"
+                  autoFocus
+                />
+                <Button size="sm" onClick={handleSaveDescription}>
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setEditingDescription(false); setDescriptionDraft(project.description); }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <div
+                className="flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setEditingDescription(true)}
+              >
+                <p className="text-black/60 dark:text-white/60 text-sm hover:text-black/80 dark:hover:text-white/80 transition-colors">
+                  {project.description || "Add a description..."}
+                </p>
+                <Pencil className="w-3 h-3 text-black/20 dark:text-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4 text-sm text-black/50 dark:text-white/50">
@@ -203,7 +341,7 @@ export function ProjectView() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -216,7 +354,9 @@ export function ProjectView() {
           <Button
             variant="outline"
             size="icon"
+            onClick={handleDownload}
             className="border-black/10 dark:border-white/10"
+            title="Download video"
           >
             <Download className="w-4 h-4" />
           </Button>
@@ -224,7 +364,8 @@ export function ProjectView() {
             variant="outline"
             size="icon"
             className="border-red-500/20 text-red-500 hover:bg-red-500/10"
-            onClick={handleDelete}
+            onClick={() => setShowDeleteDialog(true)}
+            title="Delete project"
           >
             <Trash2 className="w-4 h-4" />
           </Button>
@@ -256,20 +397,26 @@ export function ProjectView() {
           {/* Current version info */}
           {selectedVersion && (
             <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-black dark:text-white">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-black dark:text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-500" />
                   Version {selectedVersion.versionNumber}
                 </h3>
-                <div className="flex items-center gap-2 text-sm text-black/50 dark:text-white/50">
+                <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/50 bg-black/5 dark:bg-white/5 px-3 py-1.5 rounded-full">
                   <span>{selectedVersion.settings.model}</span>
                   <span>•</span>
                   <span>{selectedVersion.settings.duration}s</span>
                   <span>•</span>
                   <span>{selectedVersion.settings.aspectRatio}</span>
+                  <span>•</span>
+                  <span>{selectedVersion.settings.style}</span>
                 </div>
               </div>
-              <p className="text-black/70 dark:text-white/70 leading-relaxed">
+              <p className="text-black/70 dark:text-white/70 leading-relaxed text-sm">
                 {selectedVersion.prompt}
+              </p>
+              <p className="text-xs text-black/40 dark:text-white/40 mt-3">
+                Generated {formatRelativeTime(selectedVersion.createdAt)}
               </p>
             </div>
           )}
@@ -290,6 +437,7 @@ export function ProjectView() {
             </Link>
             <Button
               variant="outline"
+              onClick={handleFork}
               className="flex-1 justify-center gap-2 border-black/10 dark:border-white/10 h-12"
             >
               <GitFork className="w-4 h-4" />
@@ -332,9 +480,12 @@ export function ProjectView() {
           transition={{ delay: 0.2 }}
         >
           <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-5 sticky top-8">
-            <h3 className="font-semibold text-black dark:text-white mb-4">
-              Version History
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-black dark:text-white">Version History</h3>
+              <span className="text-xs text-black/40 dark:text-white/40 px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5">
+                {project.versions.length} versions
+              </span>
+            </div>
             <VersionTimeline
               versions={project.versions}
               branches={branches}
@@ -345,6 +496,33 @@ export function ProjectView() {
           </div>
         </motion.div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>"{project.title}"</strong>? This will
+              permanently remove all {project.versions.length} versions and associated branches.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

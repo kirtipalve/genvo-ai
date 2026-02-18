@@ -41,6 +41,7 @@ import {
 } from "@/app/data/dataService";
 import type { Project, Branch } from "@/app/data/mockData";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { toast } from "sonner";
 
 export function Branches() {
   const { id } = useParams();
@@ -88,24 +89,36 @@ export function Branches() {
       project.settings
     );
 
-    // Reload branches
     setBranches(getBranchesByProject(id));
     setNewBranchName("");
     setNewBranchPrompt(project.prompt);
     setDialogOpen(false);
+    toast.success(`Branch created successfully`);
   };
 
   const handleDeleteBranch = (branchId: string) => {
-    if (window.confirm("Are you sure you want to delete this branch?")) {
-      deleteBranch(branchId);
-      setBranches(getBranchesByProject(id!));
-      setSelectedBranches(selectedBranches.filter((bid) => bid !== branchId));
-    }
+    const branch = branches.find((b) => b.id === branchId);
+    toast.error(
+      `Delete branch "${branch?.name}"?`,
+      {
+        action: {
+          label: "Delete",
+          onClick: () => {
+            deleteBranch(branchId);
+            setBranches(getBranchesByProject(id!));
+            setSelectedBranches(selectedBranches.filter((bid) => bid !== branchId));
+            toast.success("Branch deleted");
+          },
+        },
+        cancel: { label: "Cancel", onClick: () => {} },
+      }
+    );
   };
 
   const handleGenerateBranch = (branchId: string) => {
     generateBranchVideo(branchId);
     setBranches(getBranchesByProject(id!));
+    toast.success("Branch video generated (demo)");
   };
 
   const statusColors = {

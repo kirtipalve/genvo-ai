@@ -11,12 +11,14 @@ import {
   Search,
   Command,
   Play,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getUnreadNotifications } from "@/app/data/collaborationService";
+import { getProjects } from "@/app/data/dataService";
+import type { Project } from "@/app/data/mockData";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -26,11 +28,32 @@ const navItems = [
 
 interface AppSidebarProps {
   onSearchClick?: () => void;
+  collapsed: boolean;
+  onCollapsedChange: (v: boolean) => void;
 }
 
-export function AppSidebar({ onSearchClick }: AppSidebarProps) {
+export function AppSidebar({ onSearchClick, collapsed, onCollapsedChange }: AppSidebarProps) {
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
+  const [recentProjects, setRecentProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    const projects = getProjects();
+    setRecentProjects(
+      projects
+        .filter((p) => p.status === "completed" || p.versions.length > 0)
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 3)
+    );
+  }, [location.pathname]);
+
+  const isActive = (path: string) => {
+    if (path === "/dashboard") return location.pathname === "/dashboard";
+    if (path === "/new") return location.pathname === "/new";
+    if (path === "/explore") return location.pathname === "/explore";
+    return location.pathname.startsWith(path);
+  };
+
+  const isProjectActive = location.pathname.startsWith("/project/");
 
   return (
     <motion.aside
@@ -43,9 +66,9 @@ export function AppSidebar({ onSearchClick }: AppSidebarProps) {
       )}
     >
       {/* Logo */}
-      <div className="p-4 flex items-center gap-3 border-b border-black/5 dark:border-white/5">
+      <div className="p-4 flex items-center gap-3 border-b border-black/5 dark:border-white/5 min-h-[60px]">
         <Link to="/" className="flex items-center gap-2">
-          <Video className="w-6 h-6 text-black dark:text-white transition-colors" />
+          <Video className="w-6 h-6 text-black dark:text-white transition-colors flex-shrink-0" />
           {!collapsed && (
             <motion.span
               initial={{ opacity: 0 }}
@@ -80,19 +103,21 @@ export function AppSidebar({ onSearchClick }: AppSidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const active = isActive(item.path);
           return (
             <Link key={item.path} to={item.path}>
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
+                title={collapsed ? item.label : undefined}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
-                  isActive
+                  active
                     ? "bg-black dark:bg-white text-white dark:text-black"
-                    : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5"
+                    : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5",
+                  collapsed && "justify-center"
                 )}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -103,15 +128,62 @@ export function AppSidebar({ onSearchClick }: AppSidebarProps) {
             </Link>
           );
         })}
+
+        {/* Recent Projects (only when expanded) */}
+        {!collapsed && recentProjects.length > 0 && (
+          <div className="pt-4">
+            <div className="flex items-center gap-2 px-3 pb-2">
+              <Clock className="w-3.5 h-3.5 text-black/30 dark:text-white/30" />
+              <span className="text-xs font-medium text-black/40 dark:text-white/40 uppercase tracking-wider">
+                Recent
+              </span>
+            </div>
+            {recentProjects.map((project) => {
+              const active = location.pathname === `/project/${project.id}`;
+              return (
+                <Link key={project.id} to={`/project/${project.id}`}>
+                  <div
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors",
+                      active
+                        ? "bg-black/10 dark:bg-white/10 text-black dark:text-white"
+                        : "text-black/60 dark:text-white/60 hover:bg-black/5 dark:hover:bg-white/5"
+                    )}
+                  >
+                    <img
+                      src={project.thumbnail}
+                      alt={project.title}
+                      className="w-5 h-5 rounded object-cover flex-shrink-0"
+                    />
+                    <span className="truncate">{project.title}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Collapsed: show project icon if in project route */}
+        {collapsed && isProjectActive && (
+          <div className="pt-2">
+            <div
+              className="flex items-center justify-center px-3 py-2.5 rounded-lg bg-black/10 dark:bg-white/10"
+              title="Current Project"
+            >
+              <Video className="w-5 h-5 text-black dark:text-white" />
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Bottom section */}
-      <div className="p-3 border-t border-black/5 dark:border-white/5 space-y-2">
+      <div className="p-3 border-t border-black/5 dark:border-white/5 space-y-1">
         {/* Demo button */}
         <Link to="/demo">
           <motion.div
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
+            title={collapsed ? "Demo" : undefined}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 hover:from-purple-500/20 hover:to-pink-500/20 transition-all duration-200",
               collapsed && "justify-center"
@@ -139,9 +211,13 @@ export function AppSidebar({ onSearchClick }: AppSidebarProps) {
           <motion.div
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
+            title={collapsed ? "Settings" : undefined}
             className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5 transition-all duration-200",
-              location.pathname === "/settings" && "bg-black/10 dark:bg-white/10"
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+              location.pathname === "/settings"
+                ? "bg-black/10 dark:bg-white/10 text-black dark:text-white"
+                : "text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5",
+              collapsed && "justify-center"
             )}
           >
             <Settings className="w-5 h-5 flex-shrink-0" />
@@ -154,7 +230,7 @@ export function AppSidebar({ onSearchClick }: AppSidebarProps) {
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={() => onCollapsedChange(!collapsed)}
         className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-white dark:bg-black border border-black/10 dark:border-white/10 shadow-sm hover:bg-black/5 dark:hover:bg-white/5"
       >
         {collapsed ? (

@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
@@ -11,6 +11,10 @@ import {
   RefreshCw,
   AlertCircle,
   Key,
+  Clock,
+  DollarSign,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Label } from "@/app/components/ui/label";
@@ -37,8 +41,67 @@ import {
   VIDEO_MODELS,
   type VideoModelKey,
 } from "@/app/services/videoGeneration";
+import { toast } from "sonner";
 
 type GenerationStatus = "idle" | "generating" | "completed" | "error";
+
+const PROMPT_HISTORY_KEY = "genvo_prompt_history";
+
+function getPromptHistory(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function savePromptToHistory(prompt: string) {
+  const history = getPromptHistory().filter((p) => p !== prompt);
+  history.unshift(prompt);
+  localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history.slice(0, 10)));
+}
+
+// Simple client-side prompt enhancer
+function enhancePrompt(prompt: string, style: string, model: VideoModelKey): string {
+  const styleEnhancements: Record<string, string> = {
+    Cinematic: "cinematic lighting, dramatic depth of field, film grain, anamorphic lens flare",
+    Natural: "natural lighting, realistic textures, documentary-style, true-to-life colors",
+    Abstract: "abstract forms, fluid motion, vivid color gradients, artistic visualization",
+    Anime: "anime art style, cel shading, vibrant colors, dynamic action lines",
+    Product: "studio lighting, clean background, high-detail product shot, commercial quality",
+    Lofi: "lo-fi aesthetic, warm tones, grainy texture, nostalgic atmosphere",
+    Vintage: "vintage film look, warm color grading, 8mm aesthetic, retro vibes",
+    Neon: "neon glow effects, cyberpunk atmosphere, vibrant neon lights, dark contrasts",
+    Minimalist: "minimalist composition, clean lines, negative space, simple elegance",
+    Fantasy: "magical atmosphere, ethereal lighting, fantasy world-building, epic scale",
+  };
+
+  const modelEnhancements: Record<string, string> = {
+    veo3: "high resolution, smooth motion, photorealistic",
+    mochi: "fluid motion, high fidelity, detailed textures",
+    minimax: "fast-paced, commercial quality, clean visuals",
+    hunyuan: "high visual quality, artistic composition, cinematic feel",
+  };
+
+  const styleHint = styleEnhancements[style] || "high quality";
+  const modelHint = modelEnhancements[model] || "high quality";
+
+  const basePrompt = prompt.trim().replace(/[.,!?]+$/, "");
+  return `${basePrompt}, ${styleHint}, ${modelHint}, 4K quality, professional production`;
+}
+
+function estimateCost(model: VideoModelKey, duration: number): string {
+  const baseCosts: Record<VideoModelKey, number> = {
+    veo3: 0.5,
+    mochi: 0.1,
+    minimax: 0.5,
+    hunyuan: 0.2,
+  };
+  const base = baseCosts[model];
+  const durationMultiplier = duration / 5;
+  const estimated = (base * durationMultiplier).toFixed(2);
+  return `~$${estimated}`;
+}
 
 export function Generate() {
   const { id } = useParams();
@@ -58,8 +121,12 @@ export function Generate() {
   const [apiKey, setApiKey] = useState("");
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
+  const [promptHistory, setPromptHistory] = useState<string[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [negativePrompt, setNegativePrompt] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Load project data and check API key
   useEffect(() => {
     if (id) {
       const loadedProject = getProject(id);
@@ -72,6 +139,7 @@ export function Generate() {
       }
     }
     setHasApiKey(isApiKeyConfigured());
+    setPromptHistory(getPromptHistory());
   }, [id]);
 
   const handleSaveApiKey = () => {
@@ -79,7 +147,19 @@ export function Generate() {
       saveApiKey(apiKey.trim());
       setHasApiKey(true);
       setShowApiKeyInput(false);
+      toast.success("API key saved successfully");
     }
+  };
+
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim()) return;
+    setEnhancing(true);
+    // Simulate a brief "thinking" delay for UX
+    await new Promise((r) => setTimeout(r, 600));
+    const enhanced = enhancePrompt(prompt, style, model);
+    setPrompt(enhanced);
+    setEnhancing(false);
+    toast.success("Prompt enhanced!");
   };
 
   const handleGenerate = async () => {
@@ -91,20 +171,21 @@ export function Generate() {
     setErrorMessage("");
     setGeneratedVideoUrl(null);
 
-    // Update project status to generating
+    savePromptToHistory(prompt);
+    setPromptHistory(getPromptHistory());
+
     updateProject(id, { status: "generating" });
 
     const modelConfig = VIDEO_MODELS[model];
 
     try {
       if (hasApiKey) {
-        // Use real fal.ai API
         const result = await generateVideo({
           prompt: `${prompt}, ${style} style`,
           model,
+          negativePrompt: negativePrompt || undefined,
           onProgress: (statusText) => {
             setStatusMessage(statusText);
-            // Estimate progress based on status
             if (statusText.includes("queue")) setProgress(10);
             else if (statusText.includes("Generating")) setProgress(50);
           },
@@ -113,22 +194,18 @@ export function Generate() {
         setProgress(100);
         setGeneratedVideoUrl(result.videoUrl);
 
-        // Create the new version with real video URL
         addVersion(id, prompt, {
           duration: duration[0],
           aspectRatio,
           style,
           model: modelConfig.name,
         }, result.videoUrl);
-
       } else {
-        // Demo mode - simulate generation
         await simulateGeneration((prog, statusText) => {
           setProgress(prog);
           setStatusMessage(statusText);
         });
 
-        // Create version with placeholder
         addVersion(id, prompt, {
           duration: duration[0],
           aspectRatio,
@@ -137,17 +214,17 @@ export function Generate() {
         });
       }
 
-      // Reload project to get updated data
       const updatedProject = getProject(id);
-      if (updatedProject) {
-        setProject(updatedProject);
-      }
+      if (updatedProject) setProject(updatedProject);
 
       setStatus("completed");
+      toast.success("Video generated successfully!");
     } catch (error) {
       setStatus("error");
-      setErrorMessage(error instanceof Error ? error.message : "Generation failed");
+      const msg = error instanceof Error ? error.message : "Generation failed";
+      setErrorMessage(msg);
       updateProject(id, { status: "draft" });
+      toast.error(msg);
     }
   };
 
@@ -159,7 +236,6 @@ export function Generate() {
     setGeneratedVideoUrl(null);
   };
 
-  // Loading state
   if (!project) {
     return (
       <div className="min-h-screen p-8 flex items-center justify-center">
@@ -179,6 +255,8 @@ export function Generate() {
     );
   }
 
+  const estimatedCost = estimateCost(model, duration[0]);
+
   return (
     <div className="min-h-screen p-8">
       {/* Breadcrumb */}
@@ -191,10 +269,7 @@ export function Generate() {
           Dashboard
         </Link>
         <ChevronRight className="w-4 h-4" />
-        <Link
-          to={`/project/${id}`}
-          className="hover:text-black dark:hover:text-white transition-colors"
-        >
+        <Link to={`/project/${id}`} className="hover:text-black dark:hover:text-white transition-colors">
           {project.title}
         </Link>
         <ChevronRight className="w-4 h-4" />
@@ -235,10 +310,53 @@ export function Generate() {
         >
           {/* Prompt */}
           <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4" />
-              Video Prompt
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Video Prompt
+              </Label>
+              {promptHistory.length > 0 && (
+                <button
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="flex items-center gap-1 text-xs text-black/50 dark:text-white/50 hover:text-black dark:hover:text-white transition-colors"
+                >
+                  <Clock className="w-3 h-3" />
+                  History
+                  {showHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              )}
+            </div>
+
+            {/* Prompt history dropdown */}
+            <AnimatePresence>
+              {showHistory && promptHistory.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg overflow-hidden"
+                >
+                  <div className="p-2 border-b border-black/5 dark:border-white/5">
+                    <p className="text-xs text-black/40 dark:text-white/40 px-1">Recent prompts</p>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto">
+                    {promptHistory.map((p, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setPrompt(p);
+                          setShowHistory(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/5 transition-colors truncate"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <Textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -251,12 +369,20 @@ export function Generate() {
               <Button
                 variant="outline"
                 size="sm"
-                className="text-xs border-black/10 dark:border-white/10"
-                disabled={status === "generating"}
+                className="text-xs border-black/10 dark:border-white/10 gap-1"
+                disabled={status === "generating" || !prompt.trim() || enhancing}
+                onClick={handleEnhancePrompt}
               >
-                <Wand2 className="w-3 h-3 mr-1" />
-                Enhance with AI
+                {enhancing ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Wand2 className="w-3 h-3" />
+                )}
+                {enhancing ? "Enhancing..." : "Enhance with AI"}
               </Button>
+              <span className="text-xs text-black/30 dark:text-white/30">
+                {prompt.length}/500 chars
+              </span>
             </div>
           </div>
 
@@ -270,9 +396,7 @@ export function Generate() {
                 </SelectTrigger>
                 <SelectContent>
                   {styleOptions.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -330,9 +454,7 @@ export function Generate() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label>Duration</Label>
-              <span className="text-sm text-black/60 dark:text-white/60">
-                {duration[0]}s
-              </span>
+              <span className="text-sm text-black/60 dark:text-white/60">{duration[0]}s</span>
             </div>
             <Slider
               value={duration}
@@ -343,6 +465,54 @@ export function Generate() {
               disabled={status === "generating"}
               className="py-2"
             />
+            <div className="flex justify-between text-xs text-black/40 dark:text-white/40">
+              <span>3s</span>
+              <span>15s</span>
+            </div>
+          </div>
+
+          {/* Cost estimate */}
+          {hasApiKey && (
+            <div className="flex items-center gap-2 p-3 bg-black/5 dark:bg-white/5 rounded-lg">
+              <DollarSign className="w-4 h-4 text-black/40 dark:text-white/40" />
+              <span className="text-sm text-black/60 dark:text-white/60">
+                Estimated cost: <span className="font-medium text-black dark:text-white">{estimatedCost}</span>
+              </span>
+              <span className="ml-auto text-xs text-black/40 dark:text-white/40">via fal.ai</span>
+            </div>
+          )}
+
+          {/* Advanced Options toggle */}
+          <div>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-sm text-black/50 dark:text-white/50 hover:text-black dark:hover:text-white transition-colors"
+            >
+              {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              Advanced Options
+            </button>
+            <AnimatePresence>
+              {showAdvanced && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-3 space-y-3"
+                >
+                  <div className="space-y-2">
+                    <Label className="text-sm">Negative Prompt</Label>
+                    <Textarea
+                      value={negativePrompt}
+                      onChange={(e) => setNegativePrompt(e.target.value)}
+                      rows={2}
+                      disabled={status === "generating"}
+                      className="bg-white dark:bg-white/5 border-black/10 dark:border-white/10 resize-none text-sm"
+                      placeholder="What to avoid in the video (blur, watermarks, etc.)"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* API Status */}
@@ -376,6 +546,7 @@ export function Generate() {
                         placeholder="Enter fal.ai API key"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSaveApiKey()}
                         className="text-sm bg-white dark:bg-white/10"
                       />
                       <Button size="sm" onClick={handleSaveApiKey} disabled={!apiKey.trim()}>
@@ -394,11 +565,7 @@ export function Generate() {
                         Add Key
                       </Button>
                       <Link to="/settings">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-purple-600/70 dark:text-purple-400/70"
-                        >
+                        <Button variant="ghost" size="sm" className="text-purple-600/70 dark:text-purple-400/70">
                           Settings
                         </Button>
                       </Link>
@@ -406,7 +573,7 @@ export function Generate() {
                   )}
                   <div className="mt-3 pt-3 border-t border-purple-500/10">
                     <p className="text-xs text-purple-600/50 dark:text-purple-400/50">
-                      Or try without an API key:
+                      Or try without an API key in demo mode
                     </p>
                   </div>
                 </div>
@@ -435,10 +602,10 @@ export function Generate() {
                       className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-6 text-lg gap-2"
                     >
                       <Sparkles className="w-5 h-5" />
-                      Try Demo Video
+                      Try Demo Generation
                     </Button>
                     <p className="text-center text-xs text-black/40 dark:text-white/40">
-                      No API key required - generates a simulated preview
+                      No API key required — simulates generation flow
                     </p>
                   </>
                 )}
@@ -456,15 +623,18 @@ export function Generate() {
                   </div>
                   <div className="w-full bg-black/10 dark:bg-white/10 rounded-full h-2 overflow-hidden">
                     <motion.div
-                      className="h-full bg-black dark:bg-white"
+                      className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min(progress, 100)}%` }}
                       transition={{ duration: 0.3 }}
                     />
                   </div>
-                  <p className="text-sm text-black/50 dark:text-white/50 mt-3">
-                    Using {VIDEO_MODELS[model].name} • {hasApiKey ? "fal.ai" : "Demo mode"}
-                  </p>
+                  <div className="flex justify-between items-center mt-2">
+                    <p className="text-xs text-black/50 dark:text-white/50">
+                      {VIDEO_MODELS[model].name} • {hasApiKey ? "fal.ai" : "Demo mode"}
+                    </p>
+                    <p className="text-xs text-black/50 dark:text-white/50">{progress}%</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -502,6 +672,9 @@ export function Generate() {
                       Video generated successfully!
                     </span>
                   </div>
+                  <p className="text-xs text-green-600/60 dark:text-green-400/60 mt-1">
+                    New version v{project.versions.length + 1} created
+                  </p>
                 </div>
                 <div className="flex gap-3">
                   <Button
@@ -530,8 +703,8 @@ export function Generate() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="sticky top-8">
-            <h3 className="font-semibold text-black dark:text-white mb-4">
+          <div className="sticky top-8 space-y-4">
+            <h3 className="font-semibold text-black dark:text-white">
               {status === "completed" ? "Generated Video" : "Current Version"}
             </h3>
             <VideoPlayer
@@ -540,17 +713,47 @@ export function Generate() {
               videoUrl={generatedVideoUrl || undefined}
             />
 
-            {/* Version comparison hint */}
+            {/* Version info */}
             {project.versions.length > 0 && status === "idle" && (
-              <div className="mt-4 p-4 bg-black/5 dark:bg-white/5 rounded-xl">
-                <p className="text-sm text-black/60 dark:text-white/60">
-                  Current version: <span className="font-medium">v{project.versions.length}</span>
-                </p>
-                <p className="text-xs text-black/40 dark:text-white/40 mt-1">
-                  Generating will create v{project.versions.length + 1}
-                </p>
+              <div className="p-4 bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-black/60 dark:text-white/60">
+                    Current: <span className="font-medium text-black dark:text-white">v{project.versions.length}</span>
+                  </span>
+                  <span className="text-black/40 dark:text-white/40">→</span>
+                  <span className="text-black/60 dark:text-white/60">
+                    Will create: <span className="font-medium text-black dark:text-white">v{project.versions.length + 1}</span>
+                  </span>
+                </div>
+                <div className="mt-3 pt-3 border-t border-black/5 dark:border-white/5 space-y-1">
+                  <p className="text-xs text-black/40 dark:text-white/40">Last version prompt:</p>
+                  <p className="text-xs text-black/60 dark:text-white/60 line-clamp-2">
+                    {project.versions[project.versions.length - 1]?.prompt}
+                  </p>
+                </div>
               </div>
             )}
+
+            {/* Model info card */}
+            <div className="p-4 bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 space-y-2">
+              <p className="text-xs font-medium text-black/40 dark:text-white/40 uppercase tracking-wider">
+                Selected Model
+              </p>
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-medium text-black dark:text-white">{VIDEO_MODELS[model].name}</p>
+                  <p className="text-xs text-black/50 dark:text-white/50 mt-0.5">{VIDEO_MODELS[model].description}</p>
+                </div>
+                <span className="text-sm font-mono text-black/50 dark:text-white/50">{VIDEO_MODELS[model].costPerVideo}</span>
+              </div>
+              <div className="flex gap-3 text-xs text-black/50 dark:text-white/50 pt-1">
+                <span>{duration[0]}s</span>
+                <span>•</span>
+                <span>{aspectRatio}</span>
+                <span>•</span>
+                <span>{style}</span>
+              </div>
+            </div>
           </div>
         </motion.div>
       </div>
