@@ -8,28 +8,126 @@ import {
   Eye,
   Globe,
   Lock,
-  Play,
   Download,
   Share2,
-  MoreHorizontal,
   ChevronRight,
   Sparkles,
   History,
   Settings,
   AlertCircle,
   Trash2,
+  MessageSquare,
+  Send,
+  LayoutList,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import { Textarea } from "@/app/components/ui/textarea";
 import { VideoPlayer } from "@/app/components/VideoPlayer";
-import { getProject, updateProject, deleteProject } from "@/app/data/dataService";
+import { getProject, updateProject, deleteProject, getCommentsByVersion, addComment, getBranchesByProject, exportProject } from "@/app/data/dataService";
 import { cn, formatRelativeTime, formatDate } from "@/lib/utils";
-import type { Project, Version } from "@/app/data/mockData";
+import type { Project, Version, Comment, Branch } from "@/app/data/mockData";
+import { CommitGraph } from "@/app/components/CommitGraph";
+
+// Comments section component
+function CommentsSection({ projectId, versionId }: { projectId: string; versionId: string }) {
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    setComments(getCommentsByVersion(projectId, versionId));
+  }, [projectId, versionId]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    addComment(projectId, versionId, text.trim());
+    setComments(getCommentsByVersion(projectId, versionId));
+    setText("");
+  };
+
+  return (
+    <div className="mt-6 bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-4">
+      <h3 className="font-semibold text-black dark:text-white flex items-center gap-2 mb-4">
+        <MessageSquare className="w-4 h-4" />
+        Comments
+        <span className="text-xs px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 text-black/60 dark:text-white/60 font-normal">
+          {comments.length}
+        </span>
+      </h3>
+
+      {/* Comment form */}
+      <form onSubmit={handleSubmit} className="flex gap-3 mb-5">
+        <img
+          src="https://api.dicebear.com/9.x/avataaars/svg?seed=user"
+          alt="You"
+          className="w-8 h-8 rounded-full flex-shrink-0 bg-black/5 dark:bg-white/5"
+        />
+        <div className="flex-1 flex gap-2">
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Add a comment..."
+            rows={1}
+            className="bg-white dark:bg-white/5 border-black/10 dark:border-white/10 resize-none flex-1 min-h-[36px]"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
+          />
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!text.trim()}
+            className="bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black flex-shrink-0"
+          >
+            <Send className="w-4 h-4" />
+          </Button>
+        </div>
+      </form>
+
+      {/* Comments list */}
+      {comments.length === 0 ? (
+        <p className="text-sm text-black/40 dark:text-white/40 text-center py-4">
+          Be the first to comment on this version.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {comments.map((comment) => (
+            <div key={comment.id} className="flex gap-3">
+              <img
+                src={comment.author.avatar}
+                alt={comment.author.name}
+                className="w-8 h-8 rounded-full flex-shrink-0 bg-black/5 dark:bg-white/5"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-sm font-semibold text-black dark:text-white">
+                    {comment.author.name}
+                  </span>
+                  <span className="text-xs text-black/40 dark:text-white/40">
+                    {formatRelativeTime(comment.timestamp)}
+                  </span>
+                </div>
+                <p className="text-sm text-black/80 dark:text-white/80 mt-0.5">
+                  {comment.text}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ProjectView() {
   const { id } = useParams();
   const [project, setProject] = useState<Project | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
 
   useEffect(() => {
     if (id) {
@@ -40,6 +138,7 @@ export function ProjectView() {
           loadedProject.versions[loadedProject.versions.length - 1] || null
         );
       }
+      setBranches(getBranchesByProject(id));
     }
   }, [id]);
 
@@ -197,6 +296,8 @@ export function ProjectView() {
             <TabsList className="bg-black/5 dark:bg-white/5">
               <TabsTrigger value="prompt">Prompt</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+              <TabsTrigger value="log">Log</TabsTrigger>
             </TabsList>
 
             <TabsContent value="prompt" className="mt-4">
@@ -237,7 +338,79 @@ export function ProjectView() {
                 </div>
               </div>
             </TabsContent>
+
+            <TabsContent value="history" className="mt-4">
+              <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-5">
+                <p className="text-xs text-black/40 dark:text-white/40 font-mono mb-4 uppercase tracking-wider">
+                  Commit Graph
+                </p>
+                {project.versions.length > 0 ? (
+                  <CommitGraph
+                    versions={project.versions}
+                    branches={branches}
+                    selectedVersionId={selectedVersion?.id}
+                    onSelectVersion={(vid) => {
+                      const v = project.versions.find((v) => v.id === vid);
+                      if (v) setSelectedVersion(v);
+                    }}
+                  />
+                ) : (
+                  <p className="text-sm text-black/40 dark:text-white/40 py-4 text-center">
+                    No commits yet — generate your first version.
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="log" className="mt-4">
+              <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/5">
+                {[
+                  ...project.versions.map((v) => ({
+                    key: v.id,
+                    icon: "●",
+                    color: "text-green-500",
+                    text: `Generated v${v.versionNumber}`,
+                    sub: v.settings.model,
+                    time: v.createdAt,
+                  })),
+                  ...branches.map((b) => ({
+                    key: b.id,
+                    icon: "⑂",
+                    color: "text-purple-500",
+                    text: `Branch "${b.name}" created`,
+                    sub: `by ${b.author.name}`,
+                    time: b.createdAt,
+                  })),
+                  {
+                    key: "init",
+                    icon: "✦",
+                    color: "text-blue-500",
+                    text: "Project created",
+                    sub: project.author.name,
+                    time: project.createdAt,
+                  },
+                ]
+                  .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+                  .map((entry) => (
+                    <div key={entry.key} className="flex items-start gap-3 px-4 py-3">
+                      <span className={cn("text-sm mt-0.5 font-mono", entry.color)}>{entry.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-black dark:text-white">{entry.text}</p>
+                        <p className="text-xs text-black/40 dark:text-white/40">{entry.sub}</p>
+                      </div>
+                      <span className="text-xs text-black/30 dark:text-white/30 whitespace-nowrap flex-shrink-0">
+                        {formatRelativeTime(entry.time)}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </TabsContent>
           </Tabs>
+
+          {/* Comments */}
+          {selectedVersion && (
+            <CommentsSection projectId={project.id} versionId={selectedVersion.id} />
+          )}
         </motion.div>
 
         {/* Version History Sidebar */}
@@ -313,6 +486,15 @@ export function ProjectView() {
 
           {/* Quick Actions */}
           <div className="mt-4 space-y-2">
+            <Link to={`/project/${id}/storyboard`}>
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 border-black/10 dark:border-white/10"
+              >
+                <LayoutList className="w-4 h-4" />
+                Storyboard
+              </Button>
+            </Link>
             <Link to={`/project/${id}/branches`}>
               <Button
                 variant="outline"
@@ -328,6 +510,14 @@ export function ProjectView() {
             >
               <GitFork className="w-4 h-4" />
               Fork Project
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 border-black/10 dark:border-white/10"
+              onClick={() => id && exportProject(id)}
+            >
+              <Download className="w-4 h-4" />
+              Export .genvo
             </Button>
             <Button
               variant="outline"

@@ -5,6 +5,14 @@ import { ArrowRight } from "lucide-react";
 import { AnimatedGrid } from "@/app/components/AnimatedGrid";
 import { FloatingShapes } from "@/app/components/FloatingShapes";
 import { MeshGradient } from "@/app/components/MeshGradient";
+import { getWaitlistCount } from "@/app/services/waitlistService";
+
+const BASE_OFFSET = 200;
+const AVATAR_SEEDS = ["alex", "sam", "jordan", "riley"];
+
+function getDisplayCount() {
+  return getWaitlistCount() + BASE_OFFSET;
+}
 
 export function Hero() {
   return (
@@ -70,15 +78,45 @@ export function Hero() {
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.7 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
           >
-            <Link to="/dashboard">
-              <Button size="lg" className="bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black px-12 py-7 text-lg rounded-full transition-colors duration-500">
-                Start Free
-                <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
-            </Link>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link to="/waitlist">
+                <Button size="lg" className="bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black px-12 py-7 text-lg rounded-full transition-colors duration-500">
+                  Join Waitlist
+                  <ArrowRight className="ml-2 w-5 h-5" />
+                </Button>
+              </Link>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link to="/dashboard">
+                <Button size="lg" variant="outline" className="border-black/20 dark:border-white/20 text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5 px-12 py-7 text-lg rounded-full transition-colors duration-500">
+                  Try Demo
+                </Button>
+              </Link>
+            </motion.div>
+          </motion.div>
+
+          {/* Social proof */}
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.9 }}
+            className="flex items-center justify-center gap-3 mt-8"
+          >
+            <div className="flex -space-x-2">
+              {AVATAR_SEEDS.map((seed) => (
+                <img
+                  key={seed}
+                  src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9`}
+                  alt=""
+                  className="w-8 h-8 rounded-full border-2 border-white dark:border-black bg-black/5 dark:bg-white/5"
+                />
+              ))}
+            </div>
+            <span className="text-sm text-black/60 dark:text-white/60">
+              Join <span className="font-semibold text-black dark:text-white">{getDisplayCount()}</span> others on the waitlist
+            </span>
           </motion.div>
         </div>
       </div>

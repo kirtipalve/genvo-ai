@@ -11,6 +11,9 @@ import {
   Wand2,
   ArrowRight,
   AlertCircle,
+  Bot,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
@@ -24,7 +27,49 @@ import {
 } from "@/app/data/dataService";
 import type { Project, Branch } from "@/app/data/mockData";
 
-type MergeStatus = "editing" | "generating" | "completed";
+type MergeStatus = "analyzing" | "editing" | "generating" | "completed";
+
+interface ConflictField {
+  field: string;
+  valueA: string;
+  valueB: string;
+}
+
+function detectConflicts(a: Branch, b: Branch): ConflictField[] {
+  const conflicts: ConflictField[] = [];
+  if (a.settings.style !== b.settings.style)
+    conflicts.push({ field: "Style", valueA: a.settings.style, valueB: b.settings.style });
+  if (a.settings.model !== b.settings.model)
+    conflicts.push({ field: "Model", valueA: a.settings.model, valueB: b.settings.model });
+  if (a.settings.duration !== b.settings.duration)
+    conflicts.push({ field: "Duration", valueA: `${a.settings.duration}s`, valueB: `${b.settings.duration}s` });
+  if (a.settings.aspectRatio !== b.settings.aspectRatio)
+    conflicts.push({ field: "Aspect Ratio", valueA: a.settings.aspectRatio, valueB: b.settings.aspectRatio });
+  return conflicts;
+}
+
+function buildAiSuggestion(a: Branch, b: Branch, conflicts: ConflictField[]): string {
+  const wordsA = new Set(a.prompt.toLowerCase().split(/\W+/));
+  const uniqueFromB = b.prompt
+    .split(" ")
+    .filter((w) => !wordsA.has(w.toLowerCase()))
+    .slice(0, 12)
+    .join(" ");
+
+  const base = `${a.prompt}, ${uniqueFromB}`;
+
+  if (conflicts.length === 0) return base.trim();
+
+  const resolutions = conflicts
+    .map((c) => {
+      if (c.field === "Duration") return `duration: ${Math.max(parseInt(c.valueA), parseInt(c.valueB))}s`;
+      if (c.field === "Style") return `style: blend of ${c.valueA} and ${c.valueB}`;
+      return null;
+    })
+    .filter(Boolean);
+
+  return resolutions.length > 0 ? `${base.trim()} [${resolutions.join(", ")}]` : base.trim();
+}
 
 export function Merge() {
   const { id } = useParams();
@@ -36,8 +81,12 @@ export function Merge() {
   const [branchA, setBranchA] = useState<Branch | null>(null);
   const [branchB, setBranchB] = useState<Branch | null>(null);
   const [mergedPrompt, setMergedPrompt] = useState("");
-  const [status, setStatus] = useState<MergeStatus>("editing");
+  const [status, setStatus] = useState<MergeStatus>("analyzing");
   const [progress, setProgress] = useState(0);
+  const [conflicts, setConflicts] = useState<ConflictField[]>([]);
+  const [aiSuggestion, setAiSuggestion] = useState("");
+  const [aiStreaming, setAiStreaming] = useState(false);
+  const [aiStreamText, setAiStreamText] = useState("");
 
   const branchAId = searchParams.get("a") || searchParams.get("branch");
   const branchBId = searchParams.get("b");
@@ -65,19 +114,42 @@ export function Merge() {
     }
   }, [id, branchAId, branchBId]);
 
-  // Initialize merged prompt when branches load
+  // Run conflict analysis when branches load
   useEffect(() => {
-    if (branchA && branchB) {
-      const wordsA = new Set(branchA.prompt.split(" "));
-      const wordsB = branchB.prompt.split(" ");
-      const combined = [...branchA.prompt.split(" ")];
-      wordsB.forEach((word) => {
-        if (!wordsA.has(word)) {
-          combined.push(word);
+    if (!branchA || !branchB) return;
+
+    const detected = detectConflicts(branchA, branchB);
+    const suggestion = buildAiSuggestion(branchA, branchB, detected);
+
+    setConflicts(detected);
+    setAiSuggestion(suggestion);
+    setMergedPrompt(suggestion);
+    setStatus("analyzing");
+
+    // Simulate AI analysis + streaming
+    const analysisTimer = setTimeout(() => {
+      setAiStreaming(true);
+      setAiStreamText("");
+
+      const fullText = detected.length > 0
+        ? `I found ${detected.length} conflict${detected.length > 1 ? "s" : ""} between these branches. ${detected.map((c) => `**${c.field}** differs (${c.valueA} vs ${c.valueB})`).join("; ")}. I recommend ${detected.find((c) => c.field === "Duration") ? `using the longer duration (${Math.max(parseInt(detected.find((c) => c.field === "Duration")!.valueA), parseInt(detected.find((c) => c.field === "Duration")!.valueB))}s)` : "keeping settings from branch A"}. The merged prompt combines unique visual elements from both branches while maintaining coherence.`
+        : `No conflicts detected — both branches share compatible settings. I've combined the prompts by merging unique descriptors from each branch. The result should blend both visual directions cleanly.`;
+
+      let i = 0;
+      const streamInterval = setInterval(() => {
+        i += 2;
+        setAiStreamText(fullText.slice(0, i));
+        if (i >= fullText.length) {
+          clearInterval(streamInterval);
+          setAiStreaming(false);
+          setTimeout(() => setStatus("editing"), 400);
         }
-      });
-      setMergedPrompt(combined.join(" "));
-    }
+      }, 18);
+
+      return () => clearInterval(streamInterval);
+    }, 800);
+
+    return () => clearTimeout(analysisTimer);
   }, [branchA, branchB]);
 
   // Cleanup interval on unmount
@@ -246,12 +318,91 @@ export function Merge() {
           </div>
         </motion.div>
 
-        {/* Right: Merged result */}
+        {/* Right: AI analysis + Merged result */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
+          className="space-y-4"
         >
+          {/* AI Conflict Analysis Card */}
+          <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 overflow-hidden">
+            <div className="p-4 border-b border-black/5 dark:border-white/10 flex items-center gap-2">
+              <Bot className="w-4 h-4 text-purple-500" />
+              <span className="font-semibold text-black dark:text-white text-sm">AI Conflict Checker</span>
+              {status === "analyzing" && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-black/40 dark:text-white/40 ml-auto" />
+              )}
+              {status !== "analyzing" && conflicts.length === 0 && (
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 ml-auto" />
+              )}
+              {status !== "analyzing" && conflicts.length > 0 && (
+                <AlertTriangle className="w-3.5 h-3.5 text-yellow-500 ml-auto" />
+              )}
+            </div>
+
+            <div className="p-4 space-y-3">
+              {/* Conflict fields */}
+              {conflicts.length > 0 && (
+                <div className="space-y-2">
+                  {conflicts.map((c) => (
+                    <div key={c.field} className="flex items-center gap-2 p-2 bg-yellow-500/8 border border-yellow-500/20 rounded-lg">
+                      <AlertTriangle className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+                      <span className="text-xs font-medium text-black dark:text-white">{c.field}</span>
+                      <span className="text-xs text-black/40 dark:text-white/40 ml-auto">
+                        <span className="text-purple-500">{c.valueA}</span>
+                        {" vs "}
+                        <span className="text-cyan-500">{c.valueB}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {conflicts.length === 0 && status !== "analyzing" && (
+                <div className="flex items-center gap-2 p-2 bg-green-500/8 border border-green-500/20 rounded-lg">
+                  <CheckCircle2 className="w-3 h-3 text-green-500" />
+                  <span className="text-xs text-green-600 dark:text-green-400">No conflicts — clean merge</span>
+                </div>
+              )}
+
+              {/* AI streaming text */}
+              {(aiStreamText || status === "analyzing") && (
+                <div className="p-3 bg-black/3 dark:bg-white/3 rounded-lg">
+                  <p className="text-xs text-black/60 dark:text-white/60 leading-relaxed">
+                    {status === "analyzing" && !aiStreamText ? (
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Analyzing branches...
+                      </span>
+                    ) : (
+                      <>
+                        {aiStreamText.replace(/\*\*(.*?)\*\*/g, "$1")}
+                        {aiStreaming && (
+                          <motion.span
+                            animate={{ opacity: [1, 0] }}
+                            transition={{ duration: 0.5, repeat: Infinity }}
+                            className="inline-block w-1.5 h-3 bg-black/40 dark:bg-white/40 ml-0.5 align-middle"
+                          />
+                        )}
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Apply suggestion button */}
+              {!aiStreaming && aiSuggestion && status === "editing" && (
+                <button
+                  onClick={() => setMergedPrompt(aiSuggestion)}
+                  className="w-full text-xs py-2 px-3 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 hover:bg-purple-500/15 transition-colors text-left flex items-center gap-2"
+                >
+                  <Sparkles className="w-3 h-3 flex-shrink-0" />
+                  Apply AI suggestion
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 overflow-hidden sticky top-8">
             <div className="p-4 border-b border-black/5 dark:border-white/10">
               <h3 className="font-semibold text-black dark:text-white flex items-center gap-2">
@@ -314,7 +465,7 @@ export function Merge() {
 
                   <Button
                     onClick={handleGenerate}
-                    disabled={!mergedPrompt.trim()}
+                    disabled={!mergedPrompt.trim() || status === "analyzing"}
                     className="w-full bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black py-6 gap-2"
                   >
                     <GitMerge className="w-5 h-5" />

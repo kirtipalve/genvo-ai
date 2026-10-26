@@ -1,11 +1,13 @@
 // Data service with localStorage persistence
-import type { Project, Version, Branch, GenerationSettings } from "./mockData";
-import { mockProjects, mockBranches } from "./mockData";
+import type { Project, Version, Branch, Comment, Shot, GenerationSettings } from "./mockData";
+import { mockProjects, mockBranches, mockComments } from "./mockData";
 
 const STORAGE_KEYS = {
   PROJECTS: "genvo_projects",
   BRANCHES: "genvo_branches",
+  COMMENTS: "genvo_comments",
   INITIALIZED: "genvo_initialized",
+  COMMENTS_INITIALIZED: "genvo_comments_initialized",
 };
 
 // Generate unique IDs
@@ -22,6 +24,12 @@ function initializeStorage(): void {
     localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(mockProjects));
     localStorage.setItem(STORAGE_KEYS.BRANCHES, JSON.stringify(mockBranches));
     localStorage.setItem(STORAGE_KEYS.INITIALIZED, "true");
+  }
+
+  const commentsInitialized = localStorage.getItem(STORAGE_KEYS.COMMENTS_INITIALIZED);
+  if (!commentsInitialized) {
+    localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(mockComments));
+    localStorage.setItem(STORAGE_KEYS.COMMENTS_INITIALIZED, "true");
   }
 }
 
@@ -240,6 +248,43 @@ export function mergeBranches(
   return addVersion(projectId, mergedPrompt, settings);
 }
 
+// Comments CRUD
+export function getComments(): Comment[] {
+  if (typeof window === "undefined") return mockComments;
+  initializeStorage();
+
+  const data = localStorage.getItem(STORAGE_KEYS.COMMENTS);
+  return data ? JSON.parse(data) : mockComments;
+}
+
+export function getCommentsByVersion(projectId: string, versionId: string): Comment[] {
+  return getComments().filter(
+    (c) => c.projectId === projectId && c.versionId === versionId
+  );
+}
+
+export function addComment(
+  projectId: string,
+  versionId: string,
+  text: string
+): Comment {
+  const comments = getComments();
+  const newComment: Comment = {
+    id: generateId(),
+    versionId,
+    projectId,
+    author: {
+      name: "You",
+      avatar: "https://api.dicebear.com/9.x/avataaars/svg?seed=user",
+    },
+    text,
+    timestamp: new Date().toISOString(),
+  };
+  comments.push(newComment);
+  localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify(comments));
+  return newComment;
+}
+
 // Helper to get placeholder thumbnails based on style
 function getPlaceholderThumbnail(style: string): string {
   const thumbnails: Record<string, string> = {
@@ -258,10 +303,113 @@ function getPlaceholderThumbnail(style: string): string {
   return thumbnails[style] || thumbnails.Cinematic;
 }
 
+// Shots CRUD (stored inside project.shots[])
+export function getShots(projectId: string): Shot[] {
+  const project = getProject(projectId);
+  return project?.shots ?? [];
+}
+
+export function addShot(projectId: string, prompt: string, duration: number): Shot | undefined {
+  const projects = getProjects();
+  const index = projects.findIndex((p) => p.id === projectId);
+  if (index === -1) return undefined;
+
+  const shots = projects[index].shots ?? [];
+  const newShot: Shot = {
+    id: generateId(),
+    order: shots.length,
+    prompt,
+    duration,
+    thumbnail: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=225&fit=crop",
+    status: "pending",
+  };
+
+  projects[index].shots = [...shots, newShot];
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+  return newShot;
+}
+
+export function updateShot(projectId: string, shotId: string, updates: Partial<Shot>): Shot | undefined {
+  const projects = getProjects();
+  const projIndex = projects.findIndex((p) => p.id === projectId);
+  if (projIndex === -1) return undefined;
+
+  const shots = projects[projIndex].shots ?? [];
+  const shotIndex = shots.findIndex((s) => s.id === shotId);
+  if (shotIndex === -1) return undefined;
+
+  shots[shotIndex] = { ...shots[shotIndex], ...updates };
+  projects[projIndex].shots = shots;
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+  return shots[shotIndex];
+}
+
+export function deleteShot(projectId: string, shotId: string): boolean {
+  const projects = getProjects();
+  const index = projects.findIndex((p) => p.id === projectId);
+  if (index === -1) return false;
+
+  const shots = projects[index].shots ?? [];
+  const filtered = shots.filter((s) => s.id !== shotId).map((s, i) => ({ ...s, order: i }));
+  projects[index].shots = filtered;
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+  return true;
+}
+
+export function reorderShots(projectId: string, orderedIds: string[]): Shot[] {
+  const projects = getProjects();
+  const index = projects.findIndex((p) => p.id === projectId);
+  if (index === -1) return [];
+
+  const shots = projects[index].shots ?? [];
+  const reordered = orderedIds
+    .map((id, i) => {
+      const shot = shots.find((s) => s.id === id);
+      return shot ? { ...shot, order: i } : null;
+    })
+    .filter(Boolean) as Shot[];
+
+  projects[index].shots = reordered;
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+  return reordered;
+}
+
 // Reset to initial mock data
 export function resetToMockData(): void {
   localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(mockProjects));
   localStorage.setItem(STORAGE_KEYS.BRANCHES, JSON.stringify(mockBranches));
+}
+
+// Storage stats for local-first indicator
+export function getStorageStats(): { projects: number; versions: number; branches: number; sizeKb: number } {
+  const projects = getProjects();
+  const branches = getBranches();
+  const versions = projects.reduce((sum, p) => sum + p.versions.length, 0);
+
+  let sizeBytes = 0;
+  for (const key of Object.values(STORAGE_KEYS)) {
+    const val = localStorage.getItem(key);
+    if (val) sizeBytes += val.length * 2; // UTF-16 approx
+  }
+
+  return { projects: projects.length, versions, branches: branches.length, sizeKb: Math.round(sizeBytes / 1024) };
+}
+
+// Export a single project as a .genvo JSON file
+export function exportProject(projectId: string): void {
+  const project = getProject(projectId);
+  if (!project) return;
+  const projectBranches = getBranchesByProject(projectId);
+  const blob = new Blob(
+    [JSON.stringify({ version: "1.0", project, branches: projectBranches }, null, 2)],
+    { type: "application/json" }
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${project.title.toLowerCase().replace(/\s+/g, "-")}.genvo`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // Clear all data

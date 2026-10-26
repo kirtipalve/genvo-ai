@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, Wand2, Image, ArrowRight } from "lucide-react";
+import { Sparkles, Wand2, Image, ArrowRight, LayoutTemplate } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
@@ -17,6 +17,7 @@ import { Slider } from "@/app/components/ui/slider";
 import { styleOptions, modelOptions, aspectRatioOptions } from "@/app/data/mockData";
 import { createProject } from "@/app/data/dataService";
 import { cn } from "@/lib/utils";
+import { TemplatesGallery } from "@/app/components/TemplatesGallery";
 
 const promptSuggestions = [
   "A serene mountain lake at sunrise with mist rising from the water",
@@ -34,6 +35,7 @@ export function NewProject() {
   const [model, setModel] = useState("gen3");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [duration, setDuration] = useState([5]);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const handleCreate = () => {
     const modelName = modelOptions.find((m) => m.id === model)?.name || "Gen-3 Alpha";
@@ -103,7 +105,20 @@ export function NewProject() {
             className="bg-white dark:bg-white/5 border-black/10 dark:border-white/10 resize-none"
           />
 
-          {/* Suggestions */}
+          {/* Browse Templates button + Suggestions */}
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-xs border-black/10 dark:border-white/10"
+              onClick={() => setShowTemplates(true)}
+            >
+              <LayoutTemplate className="w-3 h-3 mr-1" />
+              Browse Templates
+            </Button>
+          </div>
+
           <div className="space-y-2 pt-2">
             <p className="text-xs text-black/50 dark:text-white/50 flex items-center gap-1">
               <Wand2 className="w-3 h-3" />
@@ -259,6 +274,15 @@ export function NewProject() {
           </Button>
         </motion.div>
       </motion.div>
+
+      <TemplatesGallery
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onSelect={(tmplPrompt, tmplStyle) => {
+          setPrompt(tmplPrompt);
+          setStyle(tmplStyle);
+        }}
+      />
     </div>
   );
 }

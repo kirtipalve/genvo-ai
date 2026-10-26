@@ -172,26 +172,61 @@ export async function generateVideo(
   }
 }
 
+export interface GenerationStep {
+  label: string;
+  from: number;
+  to: number;
+  ms: number;
+}
+
+export const GENERATION_STEPS: GenerationStep[] = [
+  { label: "Analyzing prompt...",  from: 0,   to: 15,  ms: 1200 },
+  { label: "Loading model...",     from: 15,  to: 35,  ms: 1500 },
+  { label: "Generating frames...", from: 35,  to: 75,  ms: 3000 },
+  { label: "Rendering output...",  from: 75,  to: 90,  ms: 1200 },
+  { label: "Finalizing...",        from: 90,  to: 100, ms: 800  },
+];
+
+const TOTAL_MS = GENERATION_STEPS.reduce((sum, s) => sum + s.ms, 0);
+
 // Simulate generation for demo mode (when no API key)
 export async function simulateGeneration(
-  onProgress: (progress: number, status: string) => void
+  onProgress: (
+    progress: number,
+    status: string,
+    stepIndex: number,
+    secondsRemaining: number,
+    frameInfo?: { current: number; total: number }
+  ) => void,
+  totalFrames = 24
 ): Promise<GenerationResult> {
-  const steps = [
-    { progress: 10, status: "Analyzing prompt..." },
-    { progress: 30, status: "Preparing generation..." },
-    { progress: 50, status: "Generating frames..." },
-    { progress: 70, status: "Processing video..." },
-    { progress: 90, status: "Finalizing..." },
-    { progress: 100, status: "Complete!" },
-  ];
+  let elapsed = 0;
 
-  for (const step of steps) {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    onProgress(step.progress, step.status);
+  for (let i = 0; i < GENERATION_STEPS.length; i++) {
+    const step = GENERATION_STEPS[i];
+    const tickMs = 100;
+    const ticks = Math.floor(step.ms / tickMs);
+
+    await new Promise<void>((resolve) => {
+      let tick = 0;
+      const interval = setInterval(() => {
+        tick++;
+        const fraction = tick / ticks;
+        const progress = step.from + fraction * (step.to - step.from);
+        elapsed += tickMs;
+        const secondsRemaining = Math.max(0, Math.round((TOTAL_MS - elapsed) / 1000));
+        const frameInfo =
+          i === 2
+            ? { current: Math.min(Math.round(fraction * totalFrames), totalFrames), total: totalFrames }
+            : undefined;
+        onProgress(Math.min(progress, step.to), step.label, i, secondsRemaining, frameInfo);
+        if (tick >= ticks) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, tickMs);
+    });
   }
 
-  // Return a placeholder
-  return {
-    videoUrl: "/videos/placeholder.mp4",
-  };
+  return { videoUrl: "/videos/placeholder.mp4" };
 }

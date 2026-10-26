@@ -5,12 +5,15 @@ import {
   Sparkles,
   Wand2,
   ChevronRight,
-  Loader2,
   CheckCircle,
   ArrowLeft,
   RefreshCw,
   AlertCircle,
   Key,
+  Brain,
+  Cpu,
+  Film,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Label } from "@/app/components/ui/label";
@@ -25,6 +28,7 @@ import {
 } from "@/app/components/ui/select";
 import { Slider } from "@/app/components/ui/slider";
 import { VideoPlayer } from "@/app/components/VideoPlayer";
+import { TemplatesGallery } from "@/app/components/TemplatesGallery";
 import { styleOptions, aspectRatioOptions } from "@/app/data/mockData";
 import { getProject, addVersion, updateProject } from "@/app/data/dataService";
 import type { Project } from "@/app/data/mockData";
@@ -36,6 +40,7 @@ import {
   saveApiKey,
   getApiKey,
   VIDEO_MODELS,
+  GENERATION_STEPS,
   type VideoModelKey,
 } from "@/app/services/videoGeneration";
 
@@ -54,11 +59,15 @@ export function Generate() {
   const [status, setStatus] = useState<GenerationStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
+  const [currentStep, setCurrentStep] = useState(0);
+  const [secondsRemaining, setSecondsRemaining] = useState(0);
+  const [frameCount, setFrameCount] = useState<{ current: number; total: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   // Load project data and check API key
   useEffect(() => {
@@ -94,6 +103,9 @@ export function Generate() {
     setStatus("generating");
     setProgress(0);
     setStatusMessage("Starting generation...");
+    setCurrentStep(0);
+    setSecondsRemaining(0);
+    setFrameCount(null);
     setErrorMessage("");
     setGeneratedVideoUrl(null);
 
@@ -129,9 +141,12 @@ export function Generate() {
 
       } else {
         // Demo mode - simulate generation
-        await simulateGeneration((prog, statusText) => {
+        await simulateGeneration((prog, statusText, stepIdx, secsRemaining, fi) => {
           setProgress(prog);
           setStatusMessage(statusText);
+          setCurrentStep(stepIdx);
+          setSecondsRemaining(secsRemaining);
+          setFrameCount(fi ?? null);
         });
 
         // Create version with placeholder
@@ -161,6 +176,9 @@ export function Generate() {
     setStatus("idle");
     setProgress(0);
     setStatusMessage("");
+    setCurrentStep(0);
+    setSecondsRemaining(0);
+    setFrameCount(null);
     setErrorMessage("");
     setGeneratedVideoUrl(null);
   };
@@ -262,6 +280,16 @@ export function Generate() {
               >
                 <Wand2 className="w-3 h-3 mr-1" />
                 Enhance with AI
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs border-black/10 dark:border-white/10"
+                disabled={status === "generating"}
+                onClick={() => setShowTemplates(true)}
+              >
+                <Sparkles className="w-3 h-3 mr-1" />
+                Browse Templates
               </Button>
             </div>
           </div>
@@ -424,13 +452,58 @@ export function Generate() {
 
             {status === "generating" && (
               <div className="space-y-4">
-                <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-black dark:text-white" />
-                    <span className="font-medium text-black dark:text-white">
-                      {statusMessage || "Generating video..."}
-                    </span>
+                <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-6 space-y-5">
+                  {/* Step indicator row */}
+                  <div className="flex items-center justify-between">
+                    {[Brain, Cpu, Film, Layers, CheckCircle].map((Icon, i) => (
+                      <div key={i} className="flex flex-col items-center gap-1.5 flex-1">
+                        <div
+                          className={cn(
+                            "w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300",
+                            i < currentStep
+                              ? "bg-black dark:bg-white text-white dark:text-black"
+                              : i === currentStep
+                              ? "bg-black/10 dark:bg-white/10 text-black dark:text-white ring-2 ring-black dark:ring-white"
+                              : "bg-black/5 dark:bg-white/5 text-black/30 dark:text-white/30"
+                          )}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        {i < 4 && (
+                          <div className="absolute" />
+                        )}
+                      </div>
+                    ))}
                   </div>
+
+                  {/* Active step card */}
+                  <motion.div
+                    key={currentStep}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-black/3 dark:bg-white/3 rounded-lg px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-black/40 dark:text-white/40 uppercase tracking-wide font-medium">
+                        Step {currentStep + 1} of {GENERATION_STEPS.length}
+                      </span>
+                      {secondsRemaining > 0 && (
+                        <span className="text-xs text-black/40 dark:text-white/40">
+                          ~{secondsRemaining}s remaining
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium text-black dark:text-white mt-1">
+                      {statusMessage || GENERATION_STEPS[currentStep]?.label}
+                    </p>
+                    {frameCount && (
+                      <p className="text-xs text-black/50 dark:text-white/50 mt-1">
+                        Frame {frameCount.current} / {frameCount.total}
+                      </p>
+                    )}
+                  </motion.div>
+
+                  {/* Progress bar */}
                   <div className="w-full bg-black/10 dark:bg-white/10 rounded-full h-2 overflow-hidden">
                     <motion.div
                       className="h-full bg-black dark:bg-white"
@@ -439,8 +512,8 @@ export function Generate() {
                       transition={{ duration: 0.3 }}
                     />
                   </div>
-                  <p className="text-sm text-black/50 dark:text-white/50 mt-3">
-                    Using {VIDEO_MODELS[model].name} • {hasApiKey ? "Real generation" : "Demo mode"}
+                  <p className="text-xs text-black/40 dark:text-white/40 text-center -mt-1">
+                    {Math.round(progress)}% • {VIDEO_MODELS[model].name} • {hasApiKey ? "Real generation" : "Demo mode"}
                   </p>
                 </div>
               </div>
@@ -531,6 +604,15 @@ export function Generate() {
           </div>
         </motion.div>
       </div>
+
+      <TemplatesGallery
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onSelect={(tmplPrompt, tmplStyle) => {
+          setPrompt(tmplPrompt);
+          setStyle(tmplStyle);
+        }}
+      />
     </div>
   );
 }
