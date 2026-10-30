@@ -4,10 +4,9 @@ import { Link } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import { ArrowLeft, Download, Users, Trash2 } from "lucide-react";
 import {
-  getWaitlist,
+  getLocalWaitlist,
   exportWaitlist,
-  clearWaitlist,
-  getWaitlistCount,
+  clearLocalWaitlist,
   type WaitlistEntry,
 } from "@/app/services/waitlistService";
 
@@ -16,8 +15,9 @@ export function WaitlistAdmin() {
   const [count, setCount] = useState(0);
 
   const loadWaitlist = () => {
-    setWaitlist(getWaitlist());
-    setCount(getWaitlistCount());
+    const entries = getLocalWaitlist();
+    setWaitlist(entries);
+    setCount(entries.length);
   };
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export function WaitlistAdmin() {
   }, []);
 
   const handleExport = () => {
-    const csv = exportWaitlist();
+    const csv = exportWaitlist(waitlist);
     const blob = new Blob([csv], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -41,7 +41,7 @@ export function WaitlistAdmin() {
         "Are you sure you want to clear all waitlist entries? This cannot be undone."
       )
     ) {
-      clearWaitlist();
+      clearLocalWaitlist();
       loadWaitlist();
     }
   };
@@ -201,7 +201,8 @@ export function WaitlistAdmin() {
           </h3>
           <p className="text-sm text-blue-600/70 dark:text-blue-400/70">
             This admin view is accessible at <code className="px-2 py-1 bg-blue-500/20 rounded text-xs">/waitlist/admin</code>.
-            Data is stored in browser localStorage. For production, integrate with a backend service.
+            Live signups are stored in Supabase (Table Editor → waitlist), where you can also export them as CSV.
+            This page only shows test entries saved in this browser when Supabase isn't configured.
           </p>
         </motion.div>
       </div>

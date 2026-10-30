@@ -20,14 +20,14 @@ export function Header() {
 
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <Link to="/dashboard">
+          <Link to="/waitlist">
             <Button variant="ghost" className="text-black dark:text-white hover:text-black/70 dark:hover:text-white/70 transition-colors duration-500">
-              Sign In
+              Join Waitlist
             </Button>
           </Link>
-          <Link to="/dashboard">
+          <Link to="/demo">
             <Button className="bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black transition-colors duration-500">
-              Get Started
+              Try the Demo
             </Button>
           </Link>
         </div>

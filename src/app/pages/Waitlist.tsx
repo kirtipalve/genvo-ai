@@ -5,7 +5,6 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Textarea } from "@/app/components/ui/textarea";
-import { Progress } from "@/app/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -14,12 +13,9 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { CheckCircle, ArrowLeft, Sparkles } from "lucide-react";
-import { addToWaitlist, getWaitlistCount } from "@/app/services/waitlistService";
+import { addToWaitlist } from "@/app/services/waitlistService";
 import { MeshGradient } from "@/app/components/MeshGradient";
 import { AnimatedGrid } from "@/app/components/AnimatedGrid";
-
-const BASE_OFFSET = 200;
-const TOTAL_SPOTS = 500;
 
 export function Waitlist() {
   const [name, setName] = useState("");
@@ -27,10 +23,10 @@ export function Waitlist() {
   const [role, setRole] = useState("");
   const [useCase, setUseCase] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [claimedCount, setClaimedCount] = useState(() => getWaitlistCount() + BASE_OFFSET);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -46,16 +42,21 @@ export function Waitlist() {
       return;
     }
 
-    addToWaitlist({
-      name: name.trim(),
-      email: email.trim(),
-      role,
-      useCase: useCase.trim(),
-      timestamp: new Date().toISOString(),
-    });
-
-    setClaimedCount(getWaitlistCount() + BASE_OFFSET);
-    setSubmitted(true);
+    setSubmitting(true);
+    try {
+      await addToWaitlist({
+        name: name.trim(),
+        email: email.trim(),
+        role,
+        useCase: useCase.trim(),
+        timestamp: new Date().toISOString(),
+      });
+      setSubmitted(true);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -222,24 +223,12 @@ export function Waitlist() {
               />
             </div>
 
-            {/* Spots counter */}
-            <div className="p-4 bg-black/3 dark:bg-white/3 border border-black/8 dark:border-white/8 rounded-xl space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-black/70 dark:text-white/70 font-medium">
-                  {claimedCount} of {TOTAL_SPOTS} early access spots claimed
-                </span>
-                <span className="text-black/40 dark:text-white/40">
-                  {TOTAL_SPOTS - claimedCount} left
-                </span>
-              </div>
-              <Progress value={(claimedCount / TOTAL_SPOTS) * 100} className="h-1.5" />
-            </div>
-
             <Button
               type="submit"
+              disabled={submitting}
               className="w-full bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black py-6 text-lg"
             >
-              Join Waitlist
+              {submitting ? "Joining…" : "Join Waitlist"}
             </Button>
 
             <p className="text-xs text-center text-black/40 dark:text-white/40">

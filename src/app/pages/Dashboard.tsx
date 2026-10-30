@@ -77,6 +77,19 @@ export function Dashboard() {
         </div>
       </motion.div>
 
+      {/* Demo studio */}
+      <Link
+        to="/demo"
+        className="mb-8 flex items-center gap-4 rounded-xl border border-black/10 bg-white p-4 transition hover:border-black/30 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/30"
+      >
+        <img src="/demo-assets/hero.jpg" alt="" className="aspect-video w-36 rounded-lg object-cover" />
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-black/40 dark:text-white/40">Demo studio</p>
+          <p className="font-semibold text-black dark:text-white">Aurora Runner — Hero Spot</p>
+          <p className="text-sm text-black/60 dark:text-white/60">Branch, compare, merge, approve and sync to Premiere.</p>
+        </div>
+      </Link>
+
       {/* Projects Header */}
       <motion.div
         initial={{ opacity: 0 }}

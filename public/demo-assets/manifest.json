@@ -1,0 +1,53 @@
+{
+  "clips": [
+    {
+      "id": "merged",
+      "src": "/demo-assets/merged.mp4?v=3",
+      "poster": "/demo-assets/merged.jpg?v=3",
+      "durationSec": 6,
+      "matchAll": [["white", "neon"]],
+      "kinds": ["merge"]
+    },
+    {
+      "id": "neon-moody",
+      "src": "/demo-assets/neon-moody.mp4?v=3",
+      "poster": "/demo-assets/neon-moody.jpg?v=3",
+      "durationSec": 6,
+      "matchAll": [["neon"], ["moody"]]
+    },
+    {
+      "id": "studio-white",
+      "src": "/demo-assets/studio-white.mp4?v=3",
+      "poster": "/demo-assets/studio-white.jpg?v=3",
+      "durationSec": 6,
+      "matchAll": [["white"], ["minimalist"]]
+    },
+    {
+      "id": "hero",
+      "src": "/demo-assets/hero.mp4?v=3",
+      "poster": "/demo-assets/hero.jpg?v=3",
+      "durationSec": 6,
+      "matchAll": [["hero"]]
+    },
+    {
+      "id": "alt",
+      "src": "/demo-assets/alt.mp4?v=3",
+      "poster": "/demo-assets/alt.jpg?v=3",
+      "durationSec": 6,
+      "matchAll": []
+    }
+  ],
+  "fallback": "alt",
+  "presets": [
+    {
+      "title": "White studio",
+      "change": "seamless minimalist white studio background, soft diffused key light",
+      "prompt": "Hero product shot of the Aurora Runner sneaker, slow 360° turntable rotation, macro detail on the knit upper, seamless minimalist white studio background, soft diffused key light, clean contact shadow"
+    },
+    {
+      "title": "Neon",
+      "change": "dark moody set, neon magenta and cyan rim lighting, light haze",
+      "prompt": "Hero product shot of the Aurora Runner sneaker, slow 360° turntable rotation, macro detail on the knit upper, dark moody set, neon magenta and cyan rim lighting, light haze, reflective black floor"
+    }
+  ]
+}

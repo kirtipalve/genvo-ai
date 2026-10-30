@@ -1,4 +1,5 @@
 import { motion } from "motion/react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import { ArrowRight } from "lucide-react";
@@ -7,14 +8,15 @@ import { FloatingShapes } from "@/app/components/FloatingShapes";
 import { MeshGradient } from "@/app/components/MeshGradient";
 import { getWaitlistCount } from "@/app/services/waitlistService";
 
-const BASE_OFFSET = 200;
 const AVATAR_SEEDS = ["alex", "sam", "jordan", "riley"];
-
-function getDisplayCount() {
-  return getWaitlistCount() + BASE_OFFSET;
-}
+const MIN_SOCIAL_PROOF = 10; // below this, the count reads as empty rather than as proof
 
 export function Hero() {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    getWaitlistCount().then(setCount);
+  }, []);
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-white dark:bg-black transition-colors duration-500">
       {/* Mesh gradient background */}
@@ -89,7 +91,7 @@ export function Hero() {
               </Link>
             </motion.div>
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Link to="/dashboard">
+              <Link to="/demo">
                 <Button size="lg" variant="outline" className="border-black/20 dark:border-white/20 text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5 px-12 py-7 text-lg rounded-full transition-colors duration-500">
                   Try Demo
                 </Button>
@@ -98,6 +100,7 @@ export function Hero() {
           </motion.div>
 
           {/* Social proof */}
+          {count !== null && count >= MIN_SOCIAL_PROOF && (
           <motion.div
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -115,9 +118,10 @@ export function Hero() {
               ))}
             </div>
             <span className="text-sm text-black/60 dark:text-white/60">
-              Join <span className="font-semibold text-black dark:text-white">{getDisplayCount()}</span> others on the waitlist
+              Join <span className="font-semibold text-black dark:text-white">{count}</span> others on the waitlist
             </span>
           </motion.div>
+          )}
         </div>
       </div>
     </section>

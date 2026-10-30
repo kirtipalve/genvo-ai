@@ -67,12 +67,12 @@ export function CTA() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <Link to="/dashboard">
+            <Link to="/demo">
               <Button
                 size="lg"
                 className="bg-black dark:bg-white hover:bg-black/80 dark:hover:bg-white/80 text-white dark:text-black px-16 py-8 text-lg rounded-full transition-colors duration-500"
               >
-                Try Free
+                Try the Demo
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </Link>

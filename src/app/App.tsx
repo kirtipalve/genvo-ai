@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Studio } from "@/app/pages/Studio";
 import { Landing } from "@/app/pages/Landing";
 import { Waitlist } from "@/app/pages/Waitlist";
 import { WaitlistAdmin } from "@/app/pages/WaitlistAdmin";
@@ -22,11 +23,15 @@ export default function App() {
         <Route path="/waitlist" element={<Waitlist />} />
         <Route path="/waitlist/admin" element={<WaitlistAdmin />} />
 
+        {/* Studio canvas - full screen */}
+        <Route path="/project/:id" element={<Studio />} />
+        <Route path="/demo" element={<Navigate to="/project/aurora-runner?demo=1" replace />} />
+
         {/* App pages - with sidebar */}
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/new" element={<NewProject />} />
-          <Route path="/project/:id" element={<ProjectView />} />
+          <Route path="/project/:id/overview" element={<ProjectView />} />
           <Route path="/project/:id/generate" element={<Generate />} />
           <Route path="/project/:id/branches" element={<Branches />} />
           <Route path="/project/:id/compare" element={<Compare />} />
