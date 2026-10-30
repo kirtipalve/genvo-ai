@@ -31,6 +31,11 @@ export interface NleSync {
   syncedBy: Author;
 }
 
+export interface GenerationJob {
+  model: string;
+  requestId: string;
+}
+
 export interface VersionNode {
   id: string; // short hash, e.g. "a3f9c1e"
   number: number; // v1, v2, ... in creation order
@@ -49,6 +54,7 @@ export interface VersionNode {
   approvedBy?: Author;
   approvedAt?: number;
   nle?: NleSync;
+  job?: GenerationJob; // server-side render to resume if the page reloads mid-render
   comments: VersionComment[];
   author: Author;
   createdAt: number;

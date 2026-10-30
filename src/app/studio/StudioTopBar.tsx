@@ -10,9 +10,12 @@ import { useDemoMode } from "@/app/studio/demo/demoMode";
 import { startGhostTeammate, stopGhostTeammate } from "@/app/studio/demo/ghostTeammate";
 import { getApiKey, saveApiKey } from "@/app/services/videoGeneration";
 import { DEMO_TEAMMATE } from "@/app/studio/lib/graph";
+import { inviteLink } from "@/app/studio/cloud/cloudProject";
+import { setDisplayName, signOut, useAuth } from "@/app/lib/auth";
 
 export function StudioTopBar() {
   const graph = useStudio((s) => s.graph);
+  const cloud = useStudio((s) => s.cloud);
   const setNleOpen = useStudioUI((s) => s.setNleOpen);
 
   if (!graph) return <header className="gv-topbar" />;
@@ -21,7 +24,7 @@ export function StudioTopBar() {
   return (
     <header className="gv-topbar">
       <div className="gv-row">
-        <Link to="/dashboard" className="gv-wordmark">genvo</Link>
+        <Link to={cloud ? "/projects" : "/dashboard"} className="gv-wordmark">genvo</Link>
         <div className="gv-divider" />
         <div className="gv-breadcrumb">
           {graph.client && (
@@ -38,14 +41,21 @@ export function StudioTopBar() {
         <Avatars />
         <button
           className="gv-btn"
-          onClick={() => {
-            navigator.clipboard?.writeText(window.location.href.split("?")[0]).catch(() => {});
-            toast("Link copied");
+          onClick={async () => {
+            try {
+              const link = cloud ? await inviteLink(graph.id) : window.location.href.split("?")[0];
+              await navigator.clipboard?.writeText(link);
+              toast(cloud ? "Invite link copied" : "Link copied", {
+                description: cloud ? "Anyone with this link can join and edit the project." : undefined,
+              });
+            } catch {
+              toast("Couldn't copy the link");
+            }
           }}
         >
-          Share
+          {cloud ? "Invite" : "Share"}
         </button>
-        <StudioMenu />
+        {cloud ? <CloudMenu /> : <StudioMenu />}
         <button className="gv-btn gv-btn-primary" onClick={() => setNleOpen(true)}>
           Send to editor {toSend > 0 && <span className="gv-count">({toSend})</span>}
         </button>
@@ -78,6 +88,7 @@ function Avatars() {
             onSubmit={(e) => {
               e.preventDefault();
               renameSelf(name);
+              if (useAuth.getState().session) void setDisplayName(name);
               toast("Name updated");
             }}
           >
@@ -156,6 +167,33 @@ function StudioMenu() {
             </div>
           </form>
         )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CloudMenu() {
+  const user = useAuth((s) => s.session?.user);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button className="gv-btn gv-btn-icon" aria-label="Account">···</button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="gv-portal gv-menu">
+        <div className="gv-menu-row">
+          <div>
+            <strong>{user?.is_anonymous ? "Guest session" : user?.email}</strong>
+            <small>
+              {user?.is_anonymous
+                ? "3 renders a day. Sign in with email to keep your projects on any device."
+                : "10 renders a day while Genvo is in beta."}
+            </small>
+          </div>
+        </div>
+        <div className="gv-menu-actions">
+          <Link className="gv-btn" to="/projects">All projects</Link>
+          <button className="gv-btn" onClick={() => signOut()}>Sign out</button>
+        </div>
       </PopoverContent>
     </Popover>
   );

@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { getProvider, type GenerationKind } from "@/app/studio/providers";
+import { getProvider, setCloudMode, type GenerationKind } from "@/app/studio/providers";
+import { supabase } from "@/app/lib/supabase";
+import { createCloudSaver, loadGraph as loadCloudGraph } from "@/app/studio/cloud/cloudProject";
 import {
   DEMO_PROJECT_ID,
   makeBranch,
@@ -20,7 +22,8 @@ import { usePresence } from "@/app/studio/realtime/presence";
 import type { Author, ProjectGraph, StudioSettings, VersionNode } from "@/app/studio/types";
 
 // Single source of truth for an open project. Every mutation goes through
-// commit(), which persists to localStorage and broadcasts to collaborators.
+// commit(), which persists (localStorage, or Supabase for cloud projects) and
+// broadcasts to collaborators.
 
 const storageKey = (projectId: string) => `genvo_graph_${projectId}`;
 const STALE_JOB_MS = 15_000;
@@ -65,12 +68,13 @@ export interface MergeInput {
   author: Author;
 }
 
-type LoadStatus = "idle" | "ready" | "not-found";
+type LoadStatus = "idle" | "loading" | "ready" | "not-found";
 
 interface StudioState {
   graph: ProjectGraph | null;
   status: LoadStatus;
-  open: (projectId: string) => void;
+  cloud: boolean;
+  open: (projectId: string, options?: { cloud?: boolean }) => void;
   close: () => void;
   createVersion: (input: CreateVersionInput) => string | null;
   mergeVersions: (input: MergeInput) => string | null;
@@ -84,6 +88,8 @@ interface StudioState {
 let transport: RealtimeTransport | null = null;
 let unsubscribe: (() => void) | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+let cloudSaver: ReturnType<typeof createCloudSaver> | null = null;
+let openToken = 0;
 const jobs = new Map<string, AbortController>();
 
 export const useStudio = create<StudioState>((set, get) => {
@@ -92,7 +98,8 @@ export const useStudio = create<StudioState>((set, get) => {
     if (!current) return;
     const next = { ...mutate(current), updatedAt: Date.now() };
     set({ graph: next });
-    persist(next);
+    if (cloudSaver) cloudSaver.save(current, next);
+    else persist(next);
     transport?.send({ type: "graph", from: usePresence.getState().self.id, graph: next });
   }
 
@@ -104,7 +111,7 @@ export const useStudio = create<StudioState>((set, get) => {
     });
   }
 
-  async function runGeneration(id: string, kind: GenerationKind) {
+  async function runGeneration(id: string, kind: GenerationKind, resume?: VersionNode["job"]) {
     const v = get().graph?.versions[id];
     if (!v) return;
     jobs.get(id)?.abort();
@@ -114,10 +121,18 @@ export const useStudio = create<StudioState>((set, get) => {
 
     try {
       const out = await getProvider().generate(
-        { prompt: v.prompt, settings: v.settings, kind, signal: controller.signal },
+        {
+          prompt: v.prompt,
+          settings: v.settings,
+          kind,
+          signal: controller.signal,
+          resume,
+          onJob: (job) => patchVersion(id, { job }),
+        },
         (p) => patchVersion(id, { progress: p.progress, stage: p.stage })
       );
       patchVersion(id, {
+        job: undefined,
         status: "ready",
         progress: 100,
         stage: undefined,
@@ -128,6 +143,7 @@ export const useStudio = create<StudioState>((set, get) => {
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       patchVersion(id, {
+        job: undefined,
         status: "failed",
         stage: undefined,
         error: err instanceof Error ? err.message : "Generation failed",
@@ -152,7 +168,7 @@ export const useStudio = create<StudioState>((set, get) => {
         if (!local || msg.graph.id !== local.id) return;
         const merged = mergeGraphs(local, msg.graph);
         set({ graph: merged });
-        persist(merged);
+        if (!cloudSaver) persist(merged); // cloud: the sender already saved its rows
         break;
       }
       case "presence":
@@ -166,39 +182,81 @@ export const useStudio = create<StudioState>((set, get) => {
 
   function resumeStaleJobs(graph: ProjectGraph) {
     const now = Date.now();
+    const selfId = usePresence.getState().self.id;
+    const kindOf = (v: VersionNode): GenerationKind =>
+      v.parentIds.length === 0 ? "root" : v.parentIds.length > 1 ? "merge" : "iterate";
     Object.values(graph.versions)
-      .filter((v) => (v.status === "queued" || v.status === "generating") && now - v.updatedAt > STALE_JOB_MS)
-      .forEach((v) => runGeneration(v.id, v.parentIds.length > 1 ? "merge" : "iterate"));
+      .filter((v) => v.status === "queued" || v.status === "generating")
+      .forEach((v) => {
+        // Cloud renders cost money: resume the server job rather than starting another,
+        // and only the author starts their own queued take.
+        if (cloudSaver) {
+          if (v.job) {
+            if (now - v.updatedAt > STALE_JOB_MS || v.author.id === selfId) runGeneration(v.id, kindOf(v), v.job);
+          } else if (v.status === "queued" && v.author.id === selfId) {
+            runGeneration(v.id, kindOf(v));
+          } else if (now - v.updatedAt > STALE_JOB_MS * 4) {
+            patchVersion(v.id, { status: "failed", stage: undefined, error: "Render was interrupted. Retry to try again." });
+          }
+          return;
+        }
+        if (now - v.updatedAt > STALE_JOB_MS) runGeneration(v.id, kindOf(v));
+      });
+  }
+
+  function connect(graph: ProjectGraph, cloud: boolean) {
+    transport = createTransport(graph.id, cloud ? supabase : null);
+    unsubscribe = transport.subscribe(handleMessage);
+    const selfId = usePresence.getState().self.id;
+    transport.send({ type: "hello", from: selfId });
+    heartbeat = setInterval(() => {
+      const p = usePresence.getState();
+      transport?.send({ type: "presence", from: p.self.id, peer: p.selfPresence() });
+      p.prunePeers();
+    }, 2000);
+    window.addEventListener("beforeunload", sayBye);
+    resumeStaleJobs(graph);
   }
 
   return {
     graph: null,
     status: "idle",
+    cloud: false,
 
-    open: (projectId) => {
+    open: (projectId, options) => {
       get().close();
-      const graph = loadGraph(projectId);
-      if (!graph) {
-        set({ graph: null, status: "not-found" });
+      const token = ++openToken;
+      const cloud = !!options?.cloud;
+      setCloudMode(cloud);
+      if (!cloud) {
+        const graph = loadGraph(projectId);
+        if (!graph) {
+          set({ graph: null, status: "not-found", cloud });
+          return;
+        }
+        persist(graph);
+        set({ graph, status: "ready", cloud });
+        connect(graph, false);
         return;
       }
-      persist(graph);
-      set({ graph, status: "ready" });
-
-      transport = createTransport(projectId);
-      unsubscribe = transport.subscribe(handleMessage);
-      const selfId = usePresence.getState().self.id;
-      transport.send({ type: "hello", from: selfId });
-      heartbeat = setInterval(() => {
-        const p = usePresence.getState();
-        transport?.send({ type: "presence", from: p.self.id, peer: p.selfPresence() });
-        p.prunePeers();
-      }, 2000);
-      window.addEventListener("beforeunload", sayBye);
-      resumeStaleJobs(graph);
+      set({ graph: null, status: "loading", cloud });
+      loadCloudGraph(projectId).then((graph) => {
+        if (token !== openToken) return; // closed or reopened meanwhile
+        if (!graph) {
+          set({ graph: null, status: "not-found" });
+          return;
+        }
+        cloudSaver = createCloudSaver(projectId);
+        set({ graph, status: "ready" });
+        connect(graph, true);
+      });
     },
 
     close: () => {
+      openToken++;
+      cloudSaver?.flushNow();
+      cloudSaver = null;
+      setCloudMode(false);
       sayBye();
       window.removeEventListener("beforeunload", sayBye);
       if (heartbeat) clearInterval(heartbeat);
@@ -209,7 +267,7 @@ export const useStudio = create<StudioState>((set, get) => {
       transport = null;
       jobs.forEach((c) => c.abort());
       jobs.clear();
-      set({ graph: null, status: "idle" });
+      set({ graph: null, status: "idle", cloud: false });
       usePresence.setState({ peers: {}, selection: [], cursor: null });
     },
 
@@ -312,7 +370,7 @@ export const useStudio = create<StudioState>((set, get) => {
 
     resetProject: () => {
       const graph = get().graph;
-      if (!graph) return;
+      if (!graph || get().cloud) return;
       jobs.forEach((c) => c.abort());
       jobs.clear();
       try {

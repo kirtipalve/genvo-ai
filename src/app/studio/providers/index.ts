@@ -5,7 +5,8 @@
 import { fal } from "@fal-ai/client";
 import { VIDEO_MODELS, getApiKey, type VideoModelKey } from "@/app/services/videoGeneration";
 import { isDemoMode, loadDemoManifest, pickDemoClip } from "@/app/studio/demo/demoMode";
-import type { StudioSettings } from "@/app/studio/types";
+import { accessToken } from "@/app/lib/auth";
+import type { GenerationJob, StudioSettings } from "@/app/studio/types";
 
 export type GenerationKind = "root" | "iterate" | "branch" | "merge";
 
@@ -14,6 +15,8 @@ export interface GenerationRequest {
   settings: StudioSettings;
   kind: GenerationKind;
   signal?: AbortSignal;
+  resume?: GenerationJob; // keep polling a render that's already running
+  onJob?: (job: GenerationJob) => void;
 }
 
 export interface GenerationProgress {
@@ -127,7 +130,66 @@ export const falProvider: VideoProvider = {
   },
 };
 
+// ---- Cloud: /api/generate holds the fal.ai key and enforces a daily allowance ----
+
+async function api(path: string, init: RequestInit = {}) {
+  const token = await accessToken();
+  const res = await fetch(path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body;
+}
+
+export const cloudProvider: VideoProvider = {
+  id: "cloud",
+  label: "Genvo cloud",
+  async generate(req, onProgress) {
+    let job = req.resume;
+    if (!job) {
+      onProgress({ progress: 2, stage: "Queued" });
+      const started = await api("/api/generate", {
+        method: "POST",
+        body: JSON.stringify({ prompt: req.prompt, settings: req.settings, kind: req.kind }),
+        signal: req.signal,
+      });
+      // No video model configured on the server yet: fall back to demo clips.
+      if (started.mode === "demo") return demoProvider.generate(req, onProgress);
+      job = { model: started.model, requestId: started.requestId } as GenerationJob;
+      req.onJob?.(job);
+    }
+
+    // fal reports queue state but not percent, so progress creeps toward 90%.
+    let progress = 5;
+    for (;;) {
+      await wait(3000, req.signal);
+      const q = new URLSearchParams({ model: job.model, id: job.requestId });
+      const status = await api(`/api/generate?${q}`, { signal: req.signal });
+      if (status.status === "done") {
+        onProgress({ progress: 100, stage: "Finalizing" });
+        return { videoUrl: status.videoUrl };
+      }
+      if (status.status === "failed") throw new Error(status.error ?? "Generation failed");
+      progress = Math.min(90, progress + (90 - progress) * 0.06);
+      onProgress({
+        progress: Math.round(progress),
+        stage: status.status === "queued" ? "Waiting in queue" : "Generating frames",
+      });
+    }
+  },
+};
+
+let cloudMode = false;
+
+// Cloud projects render through the server; demo projects use cached clips.
+export function setCloudMode(on: boolean) {
+  cloudMode = on;
+}
+
 export function getProvider(): VideoProvider {
+  if (cloudMode) return cloudProvider;
   return isDemoMode() ? demoProvider : falProvider;
 }
 

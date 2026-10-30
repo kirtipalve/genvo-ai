@@ -6,6 +6,7 @@ import { useStudio } from "@/app/studio/store/studioStore";
 import { useStudioUI } from "@/app/studio/store/uiStore";
 import { usePresence } from "@/app/studio/realtime/presence";
 import { useDemoMode } from "@/app/studio/demo/demoMode";
+import { RequireAuth } from "@/app/components/SignIn";
 import { startGhostTeammate, stopGhostTeammate, isGhostRunning } from "@/app/studio/demo/ghostTeammate";
 import { StudioTopBar } from "@/app/studio/StudioTopBar";
 import { StudioCanvas } from "@/app/studio/canvas/StudioCanvas";
@@ -15,13 +16,23 @@ import { MergeDialog } from "@/app/studio/panels/MergeDialog";
 import { NleDrawer } from "@/app/studio/nle/NleDrawer";
 import "@/app/studio/studio.css";
 
+// Cloud projects (/p/:id) live in Supabase and need a session (guest is fine).
+export function CloudStudio() {
+  const { id } = useParams();
+  return (
+    <RequireAuth title="Sign in to open this project" returnTo={`/p/${id}`}>
+      <Studio cloud />
+    </RequireAuth>
+  );
+}
+
 // The Magic Loop: generate → try variations → compare → combine → approve → send to editor.
-export function Studio() {
+export function Studio({ cloud = false }: { cloud?: boolean }) {
   const { id } = useParams();
   const status = useStudio((s) => s.status);
   const open = useStudio((s) => s.open);
   const close = useStudio((s) => s.close);
-  const demo = useDemoMode((s) => s.enabled);
+  const demo = useDemoMode((s) => s.enabled) && !cloud;
   const autoTeammate = useDemoMode((s) => s.autoTeammate);
 
   // The Studio design is light-only; restore the app theme on the way out.
@@ -44,12 +55,12 @@ export function Studio() {
 
   useEffect(() => {
     if (!id) return;
-    open(id);
+    open(id, { cloud });
     return () => {
       stopGhostTeammate();
       close();
     };
-  }, [id, open, close]);
+  }, [id, cloud, open, close]);
 
   // Demo: the scripted teammate joins a few seconds after your first variation
   // has finished rendering, so the two moments read separately on camera.
@@ -75,7 +86,7 @@ export function Studio() {
   // ⌘⇧D toggles Demo Mode; Esc cancels compare-picking, then clears selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "d") {
+      if (!cloud && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         useDemoMode.getState().toggle();
         return;
@@ -88,13 +99,23 @@ export function Studio() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [cloud]);
 
   if (status === "not-found") {
     return (
       <div className="gv" style={{ alignItems: "center", justifyContent: "center", gap: 12, fontSize: 12 }}>
-        <p>Project not found.</p>
-        <Link to="/dashboard" className="gv-link">Back to dashboard</Link>
+        <p>{cloud ? "This project doesn't exist, or you haven't been invited to it." : "Project not found."}</p>
+        <Link to={cloud ? "/projects" : "/dashboard"} className="gv-link">
+          {cloud ? "Back to your projects" : "Back to dashboard"}
+        </Link>
+      </div>
+    );
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="gv" style={{ alignItems: "center", justifyContent: "center", fontSize: 12 }}>
+        <p>Opening project…</p>
       </div>
     );
   }
