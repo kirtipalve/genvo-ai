@@ -106,7 +106,7 @@ function VersionDetails({ graph, version: v }: { graph: ProjectGraph; version: V
       </section>
 
       <div className="gv-decision">
-        {v.status === "failed" ? (
+        {v.status === "failed" && v.source !== "uploaded" ? (
           <button className="gv-approve" onClick={() => retryVersion(v.id)}>Retry render</button>
         ) : (
           <button

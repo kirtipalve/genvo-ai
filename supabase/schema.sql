@@ -129,3 +129,32 @@ revoke all on function public.consume_generation() from public, anon;
 grant execute on function public.save_graph_items(uuid, jsonb) to authenticated;
 grant execute on function public.join_project(text) to authenticated;
 grant execute on function public.consume_generation() to authenticated;
+
+-- Media storage ----------------------------------------------------------------
+-- Private bucket; files live under <project_id>/… and only that project's
+-- members can upload or view them (the app uses short-lived signed links).
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('media', 'media', false, 52428800,
+        array['video/mp4', 'video/quicktime', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = excluded.public,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+create or replace function public.member_of_path(path text) returns boolean
+  language plpgsql stable security definer set search_path = public
+  as $$ declare pid uuid;
+  begin
+    pid := (storage.foldername(path))[1]::uuid;
+    return is_member(pid);
+  exception when others then
+    return false;
+  end $$;
+
+drop policy if exists "members read media" on storage.objects;
+create policy "members read media" on storage.objects
+  for select to authenticated using (bucket_id = 'media' and member_of_path(name));
+drop policy if exists "members upload media" on storage.objects;
+create policy "members upload media" on storage.objects
+  for insert to authenticated with check (bucket_id = 'media' and member_of_path(name));

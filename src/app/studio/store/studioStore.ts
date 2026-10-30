@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { getProvider, setCloudMode, type GenerationKind } from "@/app/studio/providers";
 import { supabase } from "@/app/lib/supabase";
 import { createCloudSaver, loadGraph as loadCloudGraph } from "@/app/studio/cloud/cloudProject";
+import { resolveMediaLinks, storeClip } from "@/app/studio/cloud/media";
 import {
+  DEFAULT_SETTINGS,
   DEMO_PROJECT_ID,
   makeBranch,
   mergeGraphs,
@@ -58,6 +60,15 @@ export interface CreateVersionInput {
   author: Author;
 }
 
+export interface UploadInput {
+  file: File;
+  parentId: string | null; // null: a new starting point on its own row
+  title: string;
+  prompt: string;
+  model: string;
+  author: Author;
+}
+
 export interface MergeInput {
   aId: string;
   bId: string;
@@ -78,6 +89,7 @@ interface StudioState {
   close: () => void;
   createVersion: (input: CreateVersionInput) => string | null;
   mergeVersions: (input: MergeInput) => string | null;
+  addUpload: (input: UploadInput) => string | null;
   retryVersion: (id: string) => void;
   toggleApprove: (id: string, by: Author) => void;
   addComment: (id: string, text: string, by: Author) => void;
@@ -138,8 +150,10 @@ export const useStudio = create<StudioState>((set, get) => {
         stage: undefined,
         videoUrl: out.videoUrl,
         posterUrl: out.posterUrl,
+        source: "generated",
         settings: out.durationSec ? { ...v.settings, duration: out.durationSec } : v.settings,
       });
+      void archiveClip(id, out.videoUrl);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       patchVersion(id, {
@@ -150,6 +164,24 @@ export const useStudio = create<StudioState>((set, get) => {
       });
     } finally {
       if (jobs.get(id) === controller) jobs.delete(id);
+    }
+  }
+
+  // Provider links expire; keep a copy of each generated clip in project storage.
+  // Sample clips from the demo library are skipped.
+  async function archiveClip(id: string, url: string) {
+    const graph = get().graph;
+    if (!cloudSaver || !graph || url.startsWith("/demo-assets")) return;
+    try {
+      const blob = await fetch(url).then((r) => {
+        if (!r.ok) throw new Error(`download failed (${r.status})`);
+        return r.blob();
+      });
+      const stored = await storeClip(graph.id, blob);
+      if (get().graph?.id !== graph.id) return;
+      patchVersion(id, { media: stored.media, videoUrl: stored.videoUrl, posterUrl: stored.posterUrl ?? get().graph?.versions[id]?.posterUrl });
+    } catch (err) {
+      console.error("Couldn't save the clip to project storage", err);
     }
   }
 
@@ -240,7 +272,8 @@ export const useStudio = create<StudioState>((set, get) => {
         return;
       }
       set({ graph: null, status: "loading", cloud });
-      loadCloudGraph(projectId).then((graph) => {
+      loadCloudGraph(projectId).then(async (loaded) => {
+        const graph = loaded && (await resolveMediaLinks(loaded));
         if (token !== openToken) return; // closed or reopened meanwhile
         if (!graph) {
           set({ graph: null, status: "not-found" });
@@ -343,8 +376,58 @@ export const useStudio = create<StudioState>((set, get) => {
       return id;
     },
 
+    addUpload: ({ file, parentId, title, prompt, model, author }) => {
+      const graph = get().graph;
+      if (!graph || !cloudSaver) return null;
+      const parent = parentId ? graph.versions[parentId] : undefined;
+      const id = shortHash();
+      const now = Date.now();
+      const name = title.trim() || file.name.replace(/\.[^.]+$/, "") || "Uploaded take";
+      // Every upload opens its own row, branching from the parent if there is one.
+      const branch = makeBranch(graph, name, id, author);
+      const node: VersionNode = {
+        id,
+        number: nextVersionNumber(graph),
+        title: name,
+        parentIds: parent ? [parent.id] : [],
+        branchId: branch.id,
+        prompt: prompt.trim(),
+        settings: { ...(parent?.settings ?? DEFAULT_SETTINGS), model: model.trim() || "Uploaded" },
+        status: "generating",
+        progress: 10,
+        stage: "Uploading",
+        source: "uploaded",
+        approved: false,
+        comments: [],
+        author,
+        createdAt: now,
+        updatedAt: now,
+      };
+      commit((g) => ({ ...g, branches: { ...g.branches, [branch.id]: branch }, versions: { ...g.versions, [id]: node } }));
+
+      storeClip(graph.id, file)
+        .then((stored) => {
+          const v = get().graph?.versions[id];
+          if (!v) return;
+          patchVersion(id, {
+            status: "ready",
+            progress: 100,
+            stage: undefined,
+            media: stored.media,
+            videoUrl: stored.videoUrl,
+            posterUrl: stored.posterUrl,
+            settings: { ...v.settings, duration: Math.round(stored.duration * 10) / 10 || v.settings.duration },
+          });
+        })
+        .catch((err) =>
+          patchVersion(id, { status: "failed", stage: undefined, error: err instanceof Error ? err.message : "Upload failed" })
+        );
+      return id;
+    },
+
     retryVersion: (id) => {
       const v = get().graph?.versions[id];
+      if (v?.source === "uploaded") return; // re-upload instead
       if (v) runGeneration(id, v.parentIds.length > 1 ? "merge" : "iterate");
     },
 

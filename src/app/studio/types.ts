@@ -31,6 +31,14 @@ export interface NleSync {
   syncedBy: Author;
 }
 
+// Files in the project's storage bucket (cloud projects).
+export interface VersionMedia {
+  video: string; // storage path
+  poster?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface GenerationJob {
   model: string;
   requestId: string;
@@ -50,6 +58,8 @@ export interface VersionNode {
   error?: string;
   videoUrl?: string;
   posterUrl?: string;
+  media?: VersionMedia;
+  source?: "generated" | "uploaded";
   approved: boolean;
   approvedBy?: Author;
   approvedAt?: number;

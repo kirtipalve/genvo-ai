@@ -22,6 +22,7 @@ export function StudioCanvas() {
   const setCursor = usePresence((s) => s.setCursor);
   const focusRequest = useStudioUI((s) => s.focusRequest);
   const comparePick = useStudioUI((s) => s.comparePick);
+  const cloud = useStudio((s) => s.cloud);
   const rf = useReactFlow();
   const container = useRef<HTMLDivElement>(null);
 
@@ -143,7 +144,21 @@ export function StudioCanvas() {
   const pickTitle = comparePick ? graph?.versions[comparePick]?.title : undefined;
 
   return (
-    <div ref={container} className="gv-canvas" onMouseMove={onMouseMove} onMouseLeave={() => setCursor(null)}>
+    <div
+      ref={container}
+      className="gv-canvas"
+      onMouseMove={onMouseMove}
+      onMouseLeave={() => setCursor(null)}
+      onDragOver={(e) => {
+        if (cloud && e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("video/"));
+        if (!cloud || !file) return;
+        e.preventDefault();
+        useStudioUI.getState().openUpload(file);
+      }}
+    >
       {pickTitle ? (
         <div className="gv-canvas-label is-picking">
           Now click another version to compare with {pickTitle}

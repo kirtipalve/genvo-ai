@@ -39,6 +39,11 @@ export function StudioTopBar() {
 
       <div className="gv-row" style={{ gap: 8 }}>
         <Avatars />
+        {cloud && (
+          <button className="gv-btn" onClick={() => useStudioUI.getState().openUpload()}>
+            Upload take
+          </button>
+        )}
         <button
           className="gv-btn"
           onClick={async () => {

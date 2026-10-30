@@ -13,7 +13,9 @@ import { StudioCanvas } from "@/app/studio/canvas/StudioCanvas";
 import { Inspector } from "@/app/studio/panels/Inspector";
 import { CompareDialog } from "@/app/studio/panels/CompareDialog";
 import { MergeDialog } from "@/app/studio/panels/MergeDialog";
+import { UploadDialog } from "@/app/studio/panels/UploadDialog";
 import { NleDrawer } from "@/app/studio/nle/NleDrawer";
+import { ExportDrawer } from "@/app/studio/nle/ExportDrawer";
 import "@/app/studio/studio.css";
 
 // Cloud projects (/p/:id) live in Supabase and need a session (guest is fine).
@@ -130,7 +132,8 @@ export function Studio({ cloud = false }: { cloud?: boolean }) {
         </div>
         <CompareDialog />
         <MergeDialog />
-        <NleDrawer />
+        {cloud && <UploadDialog />}
+        {cloud ? <ExportDrawer /> : <NleDrawer />}
         <Toaster position="bottom-center" theme="light" toastOptions={{ className: "gv-toast" }} />
       </main>
     </ReactFlowProvider>
