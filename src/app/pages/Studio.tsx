@@ -7,6 +7,8 @@ import { useStudioUI } from "@/app/studio/store/uiStore";
 import { usePresence } from "@/app/studio/realtime/presence";
 import { useDemoMode } from "@/app/studio/demo/demoMode";
 import { RequireAuth } from "@/app/components/SignIn";
+import { loadCapabilities } from "@/app/studio/cloud/capabilities";
+import { takePendingUpload } from "@/app/studio/cloud/cloudProject";
 import { startGhostTeammate, stopGhostTeammate, isGhostRunning } from "@/app/studio/demo/ghostTeammate";
 import { StudioTopBar } from "@/app/studio/StudioTopBar";
 import { StudioCanvas } from "@/app/studio/canvas/StudioCanvas";
@@ -57,12 +59,29 @@ export function Studio({ cloud = false }: { cloud?: boolean }) {
 
   useEffect(() => {
     if (!id) return;
+    if (cloud) void loadCapabilities();
     open(id, { cloud });
     return () => {
       stopGhostTeammate();
       close();
     };
   }, [id, cloud, open, close]);
+
+  // A new project's first take, chosen on the projects page, uploads on arrival.
+  useEffect(() => {
+    if (!cloud || status !== "ready" || !id) return;
+    const pending = takePendingUpload(id);
+    if (!pending) return;
+    const vid = useStudio.getState().addUpload({
+      file: pending.file,
+      parentIds: [],
+      title: "",
+      prompt: pending.prompt,
+      model: pending.model,
+      author: usePresence.getState().self,
+    });
+    if (vid) usePresence.getState().setSelection([vid]);
+  }, [cloud, status, id]);
 
   // Demo: the scripted teammate joins a few seconds after your first variation
   // has finished rendering, so the two moments read separately on camera.

@@ -33,10 +33,28 @@ export async function listProjects(): Promise<CloudProjectSummary[]> {
   return data ?? [];
 }
 
+// A first take the studio uploads as soon as the new project opens.
+export interface PendingUpload {
+  file: File;
+  prompt: string;
+  model: string;
+}
+const pendingUploads = new Map<string, PendingUpload>();
+export function setPendingUpload(projectId: string, upload: PendingUpload) {
+  pendingUploads.set(projectId, upload);
+}
+export function takePendingUpload(projectId: string): PendingUpload | undefined {
+  const upload = pendingUploads.get(projectId);
+  pendingUploads.delete(projectId);
+  return upload;
+}
+
+// With a prompt, the first take starts queued and renders when the studio
+// opens; without one the project starts empty (first take is an upload).
 export async function createProject(input: {
   title: string;
   client?: string;
-  prompt: string;
+  prompt?: string;
   settings: StudioSettings;
   author: Author;
 }): Promise<string> {
@@ -46,8 +64,8 @@ export async function createProject(input: {
     .select("id")
     .single();
   if (error) throw error;
+  if (!input.prompt?.trim()) return data.id;
 
-  // The first take starts queued; the studio renders it as soon as it opens.
   const now = Date.now();
   const rootId = shortHash();
   const main: StudioBranch = {
@@ -66,7 +84,7 @@ export async function createProject(input: {
     title: "First take",
     parentIds: [],
     branchId: main.id,
-    prompt: input.prompt.trim(),
+    prompt: input.prompt!.trim(),
     settings: input.settings,
     status: "queued",
     progress: 0,

@@ -7,6 +7,7 @@ import { usePresence } from "@/app/studio/realtime/presence";
 import { explainMerge, mergePrompts, settingsConflicts } from "@/app/studio/lib/prompt";
 import { branchLabel, mainBranch } from "@/app/studio/lib/graph";
 import type { StudioSettings } from "@/app/studio/types";
+import { useCapabilities } from "@/app/studio/cloud/capabilities";
 
 // "Combine": creates a new version with both selected versions as parents.
 export function MergeDialog() {
@@ -17,6 +18,10 @@ export function MergeDialog() {
   const mergeVersions = useStudio((s) => s.mergeVersions);
   const self = usePresence((s) => s.self);
   const setSelection = usePresence((s) => s.setSelection);
+  const cloud = useStudio((s) => s.cloud);
+  const generation = useCapabilities((s) => s.generation);
+  const openUpload = useStudioUI((s) => s.openUpload);
+  const uploadOnly = cloud && !generation;
 
   const a = pair && graph ? graph.versions[pair[0]] : undefined;
   const b = pair && graph ? graph.versions[pair[1]] : undefined;
@@ -136,7 +141,21 @@ export function MergeDialog() {
           </label>
           <span className="gv-spacer" />
           <button className="gv-btn gv-btn-outline" onClick={closeDialogs}>Cancel</button>
-          <button className="gv-btn gv-btn-primary" onClick={submit} disabled={!prompt.trim()}>Combine</button>
+          {uploadOnly ? (
+            <button
+              className="gv-btn gv-btn-primary"
+              disabled={!prompt.trim()}
+              onClick={() => {
+                navigator.clipboard?.writeText(prompt).catch(() => {});
+                toast("Combined prompt copied", { description: "Render it in your video tool, then upload the clip." });
+                openUpload({ parentIds: [a.id, b.id], prompt, title });
+              }}
+            >
+              Copy prompt & upload take
+            </button>
+          ) : (
+            <button className="gv-btn gv-btn-primary" onClick={submit} disabled={!prompt.trim()}>Combine</button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

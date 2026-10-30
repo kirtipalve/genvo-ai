@@ -6,6 +6,7 @@ import { resolveMediaLinks, storeClip } from "@/app/studio/cloud/media";
 import {
   DEFAULT_SETTINGS,
   DEMO_PROJECT_ID,
+  mainBranch,
   makeBranch,
   mergeGraphs,
   migrateGraph,
@@ -62,7 +63,7 @@ export interface CreateVersionInput {
 
 export interface UploadInput {
   file: File;
-  parentId: string | null; // null: a new starting point on its own row
+  parentIds: string[]; // [] new starting point, [id] variation, [a, b] combined take
   title: string;
   prompt: string;
   model: string;
@@ -376,20 +377,22 @@ export const useStudio = create<StudioState>((set, get) => {
       return id;
     },
 
-    addUpload: ({ file, parentId, title, prompt, model, author }) => {
+    addUpload: ({ file, parentIds, title, prompt, model, author }) => {
       const graph = get().graph;
       if (!graph || !cloudSaver) return null;
-      const parent = parentId ? graph.versions[parentId] : undefined;
+      const parents = parentIds.filter((p) => graph.versions[p]);
+      const parent = parents[0] ? graph.versions[parents[0]] : undefined;
       const id = shortHash();
       const now = Date.now();
       const name = title.trim() || file.name.replace(/\.[^.]+$/, "") || "Uploaded take";
-      // Every upload opens its own row, branching from the parent if there is one.
-      const branch = makeBranch(graph, name, id, author);
+      // A combined take continues the main line (like Combine); any other upload opens its own row.
+      const main = parents.length > 1 ? mainBranch(graph) : undefined;
+      const branch = main ? { ...main, headId: id, updatedAt: now } : makeBranch(graph, name, id, author);
       const node: VersionNode = {
         id,
         number: nextVersionNumber(graph),
         title: name,
-        parentIds: parent ? [parent.id] : [],
+        parentIds: parents,
         branchId: branch.id,
         prompt: prompt.trim(),
         settings: { ...(parent?.settings ?? DEFAULT_SETTINGS), model: model.trim() || "Uploaded" },

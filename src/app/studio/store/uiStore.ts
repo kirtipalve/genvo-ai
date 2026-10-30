@@ -4,12 +4,19 @@ import { create } from "zustand";
 
 type Pair = [string, string];
 
+export interface UploadRequest {
+  file: File | null;
+  parentIds: string[]; // [] new starting point, [id] variation, [a, b] combined take
+  prompt?: string;
+  title?: string;
+}
+
 interface StudioUIState {
   compare: Pair | null;
   merge: Pair | null;
   comparePick: string | null; // "Compare" clicked on this version; waiting for a second pick
   nleOpen: boolean;
-  upload: { file: File | null } | null; // "Upload a take" dialog
+  upload: UploadRequest | null; // "Upload a take" dialog
   focusRequest: { id: string; at: number } | null;
   variationFocus: number; // bumps to focus the "Try a variation" input
   openCompare: (pair: Pair) => void;
@@ -17,7 +24,7 @@ interface StudioUIState {
   closeDialogs: () => void;
   setComparePick: (id: string | null) => void;
   setNleOpen: (open: boolean) => void;
-  openUpload: (file?: File | null) => void;
+  openUpload: (request?: Partial<UploadRequest>) => void;
   focusNode: (id: string) => void;
   focusVariationInput: () => void;
 }
@@ -35,7 +42,8 @@ export const useStudioUI = create<StudioUIState>((set) => ({
   closeDialogs: () => set({ compare: null, merge: null, upload: null }),
   setComparePick: (comparePick) => set({ comparePick }),
   setNleOpen: (nleOpen) => set({ nleOpen }),
-  openUpload: (file = null) => set({ upload: { file }, compare: null, merge: null, comparePick: null }),
+  openUpload: (request = {}) =>
+    set({ upload: { file: null, parentIds: [], ...request }, compare: null, merge: null, comparePick: null }),
   focusNode: (id) => set({ focusRequest: { id, at: Date.now() } }),
   focusVariationInput: () => set({ variationFocus: Date.now() }),
 }));

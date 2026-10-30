@@ -190,8 +190,8 @@ function CloudMenu() {
             <strong>{user?.is_anonymous ? "Guest session" : user?.email}</strong>
             <small>
               {user?.is_anonymous
-                ? "3 renders a day. Sign in with email to keep your projects on any device."
-                : "10 renders a day while Genvo is in beta."}
+                ? "Guest session. Sign out and sign in with email to keep projects on any device."
+                : "Signed in. Your projects are available on any device."}
             </small>
           </div>
         </div>

@@ -156,7 +156,7 @@ export function StudioCanvas() {
         const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("video/"));
         if (!cloud || !file) return;
         e.preventDefault();
-        useStudioUI.getState().openUpload(file);
+        useStudioUI.getState().openUpload({ file });
       }}
     >
       {pickTitle ? (
@@ -167,6 +167,14 @@ export function StudioCanvas() {
       ) : (
         <div className="gv-canvas-label">
           Workspace / {graph ? Object.keys(graph.versions).length : 0} versions
+        </div>
+      )}
+
+      {cloud && graph && Object.keys(graph.versions).length === 0 && (
+        <div className="gv-canvas-empty">
+          <strong>Add your first take</strong>
+          <span>Drop a video here, or use Upload take. Clips from Runway, Kling, Veo, Sora or any other tool work.</span>
+          <button className="gv-btn gv-btn-primary" onClick={() => useStudioUI.getState().openUpload()}>Upload take</button>
         </div>
       )}
 

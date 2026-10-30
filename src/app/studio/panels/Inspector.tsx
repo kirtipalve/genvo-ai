@@ -8,6 +8,7 @@ import { authorName, formatDuration, sortedVersions, timeAgo, versionMeta } from
 import { modelName } from "@/app/studio/providers";
 import type { ProjectGraph, VersionNode } from "@/app/studio/types";
 import { VariationForm } from "./VariationForm";
+import { useCapabilities } from "@/app/studio/cloud/capabilities";
 
 export function Inspector() {
   const graph = useStudio((s) => s.graph);
@@ -158,7 +159,7 @@ function VersionDetails({ graph, version: v }: { graph: ProjectGraph; version: V
         </form>
       </section>
 
-      {ready && <VariationForm version={v} branch={branch} isHead={branch.headId === v.id} />}
+      {ready && <NextTake version={v} branch={branch} isHead={branch.headId === v.id} />}
     </>
   );
 }
@@ -238,5 +239,31 @@ function ProjectOverview({ graph }: { graph: ProjectGraph }) {
         Hover a version to try a variation, compare or approve. Shift-click two to combine them.
       </p>
     </>
+  );
+}
+
+// With a video model connected, describe a change and render it; otherwise
+// (cloud projects without generation) bring the next take in as an upload.
+function NextTake({ version, branch, isHead }: { version: VersionNode; branch: ProjectGraph["branches"][string]; isHead: boolean }) {
+  const cloud = useStudio((s) => s.cloud);
+  const generation = useCapabilities((s) => s.generation);
+  const openUpload = useStudioUI((s) => s.openUpload);
+  if (!cloud || generation) return <VariationForm version={version} branch={branch} isHead={isHead} />;
+  return (
+    <div className="gv-variation">
+      <div className="gv-variation-head">
+        <span>Next take</span>
+      </div>
+      <p className="gv-hint" style={{ padding: "0 0 8px" }}>
+        Made a new version of this in your video tool? Add it here and it branches from {version.title}.
+      </p>
+      <button
+        className="gv-btn gv-btn-outline"
+        style={{ width: "100%", justifyContent: "center" }}
+        onClick={() => openUpload({ parentIds: [version.id], prompt: version.prompt })}
+      >
+        Upload a take from this version
+      </button>
+    </div>
   );
 }

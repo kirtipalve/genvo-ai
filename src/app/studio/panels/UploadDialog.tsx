@@ -2,22 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/app/components/ui/dialog";
 import { useStudio } from "@/app/studio/store/studioStore";
-import { useStudioUI } from "@/app/studio/store/uiStore";
+import { useStudioUI, type UploadRequest } from "@/app/studio/store/uiStore";
 import { usePresence } from "@/app/studio/realtime/presence";
 import { sortedVersions } from "@/app/studio/lib/graph";
 import { MAX_UPLOAD_BYTES } from "@/app/studio/cloud/media";
 
 // Tools teams generate in today; "Other" lets them type their own.
-const TOOLS = ["Runway", "Kling", "Veo", "Sora", "Luma", "Pika", "Hailuo / MiniMax", "Seedance", "Midjourney", "Firefly"];
+export const TOOLS = ["Runway", "Kling", "Veo", "Sora", "Luma", "Pika", "Hailuo / MiniMax", "Seedance", "Midjourney", "Firefly"];
 
 // "Upload a take": bring a clip made in any tool into the version graph.
 export function UploadDialog() {
   const upload = useStudioUI((s) => s.upload);
   if (!upload) return null;
-  return <UploadForm initialFile={upload.file} />;
+  return <UploadForm request={upload} />;
 }
 
-function UploadForm({ initialFile }: { initialFile: File | null }) {
+function UploadForm({ request }: { request: UploadRequest }) {
   const closeDialogs = useStudioUI((s) => s.closeDialogs);
   const focusNode = useStudioUI((s) => s.focusNode);
   const graph = useStudio((s) => s.graph);
@@ -26,12 +26,15 @@ function UploadForm({ initialFile }: { initialFile: File | null }) {
   const selection = usePresence((s) => s.selection);
   const setSelection = usePresence((s) => s.setSelection);
 
-  const [file, setFile] = useState<File | null>(initialFile);
-  const [title, setTitle] = useState("");
+  const combining = request.parentIds.length > 1;
+  const [file, setFile] = useState<File | null>(request.file);
+  const [title, setTitle] = useState(request.title ?? "");
   const [tool, setTool] = useState(TOOLS[0]);
   const [otherTool, setOtherTool] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [parentId, setParentId] = useState<string>(selection.length === 1 ? selection[0] : "");
+  const [prompt, setPrompt] = useState(request.prompt ?? "");
+  const [parentId, setParentId] = useState<string>(
+    request.parentIds[0] ?? (selection.length === 1 ? selection[0] : "")
+  );
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
@@ -50,7 +53,8 @@ function UploadForm({ initialFile }: { initialFile: File | null }) {
 
   function submit() {
     if (!file || tooBig) return;
-    const id = addUpload({ file, parentId: parentId || null, title, prompt, model, author: self });
+    const parentIds = combining ? request.parentIds : parentId ? [parentId] : [];
+    const id = addUpload({ file, parentIds, title, prompt, model, author: self });
     if (!id) return;
     toast(`Uploading ${title || file.name}`, { description: "It appears on the canvas as soon as it's stored." });
     closeDialogs();
@@ -62,9 +66,14 @@ function UploadForm({ initialFile }: { initialFile: File | null }) {
     <Dialog open onOpenChange={(open) => !open && closeDialogs()}>
       <DialogContent className="gv-portal gv-dialog max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <div>
-          <DialogTitle className="gv-dialog-title">Upload a take</DialogTitle>
+          <DialogTitle className="gv-dialog-title">{combining ? "Upload the combined take" : "Upload a take"}</DialogTitle>
           <DialogDescription className="gv-dialog-sub">
-            Add a clip from any tool. It becomes a version you can compare, comment on and approve.
+            {combining
+              ? `Render the combined prompt in your tool, then add the clip here. It's linked to ${request.parentIds
+                  .map((p) => graph.versions[p]?.title)
+                  .filter(Boolean)
+                  .join(" and ")}.`
+              : "Add a clip from any tool. It becomes a version you can compare, comment on and approve."}
           </DialogDescription>
         </div>
 
@@ -121,6 +130,7 @@ function UploadForm({ initialFile }: { initialFile: File | null }) {
               <input value={otherTool} onChange={(e) => setOtherTool(e.target.value)} placeholder="Tool name" />
             </span>
           )}
+          {!combining && (
           <label>
             Branch from
             <select className="gv-select" value={parentId} onChange={(e) => setParentId(e.target.value)}>
@@ -130,6 +140,7 @@ function UploadForm({ initialFile }: { initialFile: File | null }) {
               ))}
             </select>
           </label>
+          )}
         </div>
 
         <div className="gv-dialog-footer">
