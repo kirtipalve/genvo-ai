@@ -12,6 +12,8 @@ import { Branches } from "@/app/pages/Branches";
 import { Compare } from "@/app/pages/Compare";
 import { Merge } from "@/app/pages/Merge";
 import { Storyboard } from "@/app/pages/Storyboard";
+import { Demo } from "@/app/pages/Demo";
+import { Settings } from "@/app/pages/Settings";
 import { AppLayout } from "@/app/layouts/AppLayout";
 
 export default function App() {
@@ -27,6 +29,9 @@ export default function App() {
         <Route path="/project/:id" element={<Studio />} />
         <Route path="/demo" element={<Navigate to="/project/aurora-runner?demo=1" replace />} />
 
+        {/* Demo walkthrough - no sidebar */}
+        <Route path="/walkthrough" element={<Demo />} />
+
         {/* App pages - with sidebar */}
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
@@ -38,6 +43,7 @@ export default function App() {
           <Route path="/project/:id/merge" element={<Merge />} />
           <Route path="/project/:id/storyboard" element={<Storyboard />} />
           <Route path="/explore" element={<Explore />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

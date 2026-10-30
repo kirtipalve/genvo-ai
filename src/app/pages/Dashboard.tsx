@@ -1,24 +1,53 @@
 import { motion } from "motion/react";
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { Plus, TrendingUp, Video, Clock } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus, TrendingUp, Video, Clock, GitBranch, Sparkles } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { ProjectCard } from "@/app/components/ProjectCard";
+import { DemoTip } from "@/app/components/DemoHint";
 import { getProjects } from "@/app/data/dataService";
 import type { Project } from "@/app/data/mockData";
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [showWelcome, setShowWelcome] = useState(true);
 
   useEffect(() => {
     setProjects(getProjects());
+    // Check if user has seen welcome
+    const seen = localStorage.getItem("genvo-welcome-seen");
+    if (seen) setShowWelcome(false);
   }, []);
+
+  const handleDismissWelcome = () => {
+    setShowWelcome(false);
+    localStorage.setItem("genvo-welcome-seen", "true");
+  };
 
   const completedCount = projects.filter((p) => p.status === "completed").length;
   const totalViews = projects.reduce((acc, p) => acc + p.views, 0);
+  const totalBranches = projects.reduce((acc, p) => acc + (p.versions.length > 1 ? 1 : 0), 0);
 
   return (
     <div className="min-h-screen p-8">
+      {/* Welcome tip for demo */}
+      {showWelcome && projects.length > 0 && (
+        <DemoTip
+          action={{
+            label: "Try it now",
+            onClick: () => {
+              handleDismissWelcome();
+              navigate("/project/1");
+            },
+          }}
+        >
+          <strong>Welcome to Genvo!</strong> Click on a project to see version history,
+          create branches, and collaborate with your team. Try the <strong>Cyberpunk City</strong> project
+          to explore branching and versioning.
+        </DemoTip>
+      )}
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -38,7 +67,7 @@ export function Dashboard() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
+        className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8"
       >
         <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-5">
           <div className="flex items-center gap-3">
@@ -46,7 +75,7 @@ export function Dashboard() {
               <Video className="w-5 h-5 text-black dark:text-white" />
             </div>
             <div>
-              <p className="text-sm text-black/60 dark:text-white/60">Total Projects</p>
+              <p className="text-sm text-black/60 dark:text-white/60">Projects</p>
               <p className="text-2xl font-bold text-black dark:text-white">{projects.length}</p>
             </div>
           </div>
@@ -54,12 +83,26 @@ export function Dashboard() {
 
         <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-green-600 dark:text-green-400" />
+            <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div>
-              <p className="text-sm text-black/60 dark:text-white/60">Completed</p>
-              <p className="text-2xl font-bold text-black dark:text-white">{completedCount}</p>
+              <p className="text-sm text-black/60 dark:text-white/60">Versions</p>
+              <p className="text-2xl font-bold text-black dark:text-white">
+                {projects.reduce((acc, p) => acc + p.versions.length, 0)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/10 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+              <GitBranch className="w-5 h-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <p className="text-sm text-black/60 dark:text-white/60">Branches</p>
+              <p className="text-2xl font-bold text-black dark:text-white">7</p>
             </div>
           </div>
         </div>

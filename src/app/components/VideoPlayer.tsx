@@ -18,6 +18,7 @@ interface VideoPlayerProps {
   videoUrl?: string;
   title?: string;
   className?: string;
+  onTimeUpdate?: (time: number) => void;
 }
 
 export function VideoPlayer({
@@ -25,6 +26,7 @@ export function VideoPlayer({
   videoUrl,
   title,
   className,
+  onTimeUpdate,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -47,6 +49,7 @@ export function VideoPlayer({
     const handleTimeUpdate = () => {
       if (video.duration) {
         setProgress((video.currentTime / video.duration) * 100);
+        onTimeUpdate?.(video.currentTime);
       }
     };
 

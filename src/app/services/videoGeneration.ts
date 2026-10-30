@@ -1,27 +1,29 @@
 // Video generation service using fal.ai
 import { fal } from "@fal-ai/client";
 
+// API Provider types
+export type ApiProvider = "fal";
+
 // Configure fal.ai client
-// API key should be set via environment variable FAL_KEY
-// or configured here for development
 export function configureFal(apiKey?: string) {
   if (apiKey) {
     fal.config({ credentials: apiKey });
   }
 }
 
-// Check if API key is configured
-export function isApiKeyConfigured(): boolean {
-  const key = getApiKey();
-  return !!key && key.length > 0;
-}
-
-// Get API key from localStorage or environment
+// Get API key from environment or localStorage
 export function getApiKey(): string | null {
   if (typeof window !== "undefined") {
+    const envKey = import.meta.env.VITE_FAL_API_KEY;
+    if (envKey) return envKey;
     return localStorage.getItem("fal_api_key");
   }
   return null;
+}
+
+// Check if API key is configured
+export function isApiKeyConfigured(): boolean {
+  return !!getApiKey();
 }
 
 // Save API key to localStorage
@@ -43,27 +45,31 @@ export function clearApiKey(): void {
 export const VIDEO_MODELS = {
   veo3: {
     id: "fal-ai/veo3/fast",
-    name: "Veo 3 (Google)",
-    description: "Google's latest, with audio generation",
+    name: "Veo 3",
+    description: "Google's latest video model",
     costPerVideo: "~$0.50",
+    provider: "fal" as ApiProvider,
   },
   mochi: {
     id: "fal-ai/mochi-v1",
     name: "Mochi v1",
     description: "Open-source, high-fidelity motion",
     costPerVideo: "~$0.10",
+    provider: "fal" as ApiProvider,
   },
   minimax: {
     id: "fal-ai/minimax/video-01-live",
     name: "MiniMax Video",
     description: "Fast, commercial-ready",
     costPerVideo: "~$0.50",
+    provider: "fal" as ApiProvider,
   },
   hunyuan: {
     id: "fal-ai/hunyuan-video",
     name: "Hunyuan Video",
     description: "High visual quality",
     costPerVideo: "~$0.20",
+    provider: "fal" as ApiProvider,
   },
 } as const;
 
@@ -114,57 +120,64 @@ function buildModelInput(
 }
 
 // Generate video using fal.ai
+async function generateWithFal(
+  prompt: string,
+  model: VideoModelKey,
+  negativePrompt?: string,
+  seed?: number,
+  onProgress?: (status: string, logs?: string[]) => void
+): Promise<GenerationResult> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("fal.ai API key not configured. Add your key in Settings.");
+  }
+
+  configureFal(apiKey);
+  const modelConfig = VIDEO_MODELS[model];
+
+  onProgress?.("Starting fal.ai generation...");
+  const input = buildModelInput(model, prompt, negativePrompt, seed);
+
+  const result = await fal.subscribe(modelConfig.id, {
+    input,
+    logs: true,
+    onQueueUpdate: (update) => {
+      if (update.status === "IN_QUEUE") {
+        onProgress?.("Waiting in queue...");
+      } else if (update.status === "IN_PROGRESS") {
+        const logs = update.logs?.map((log) => log.message) || [];
+        onProgress?.("Generating video...", logs);
+      }
+    },
+  });
+
+  const videoUrl = (result.data as { video?: { url?: string } })?.video?.url;
+  if (!videoUrl) {
+    throw new Error("No video URL returned from fal.ai");
+  }
+
+  return {
+    videoUrl,
+    seed: (result.data as { seed?: number })?.seed,
+  };
+}
+
+// Main generate function
 export async function generateVideo(
   options: GenerationOptions
 ): Promise<GenerationResult> {
   const { prompt, model = "veo3", negativePrompt, seed, onProgress } = options;
 
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("API key not configured. Please add your fal.ai API key in settings.");
-  }
-
-  configureFal(apiKey);
-
-  const modelConfig = VIDEO_MODELS[model];
-
   try {
     onProgress?.("Starting generation...");
-
-    const input = buildModelInput(model, prompt, negativePrompt, seed);
-
-    const result = await fal.subscribe(modelConfig.id, {
-      input,
-      logs: true,
-      onQueueUpdate: (update) => {
-        if (update.status === "IN_QUEUE") {
-          onProgress?.("Waiting in queue...");
-        } else if (update.status === "IN_PROGRESS") {
-          const logs = update.logs?.map((log) => log.message) || [];
-          onProgress?.("Generating video...", logs);
-        }
-      },
-    });
-
-    // Extract video URL from result
-    const videoUrl = (result.data as { video?: { url?: string } })?.video?.url;
-
-    if (!videoUrl) {
-      throw new Error("No video URL returned from API");
-    }
-
-    return {
-      videoUrl,
-      seed: (result.data as { seed?: number })?.seed,
-    };
+    return await generateWithFal(prompt, model, negativePrompt, seed, onProgress);
   } catch (error) {
     if (error instanceof Error) {
-      // Handle specific fal.ai errors
       if (error.message.includes("401") || error.message.includes("Unauthorized")) {
         throw new Error("Invalid API key. Please check your fal.ai API key.");
       }
       if (error.message.includes("402") || error.message.includes("Payment")) {
-        throw new Error("Insufficient credits. Please add credits to your fal.ai account.");
+        throw new Error("Insufficient fal.ai credits.");
       }
       throw error;
     }
